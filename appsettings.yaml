@@ -1,0 +1,37 @@
+http:
+  host: 0.0.0.0
+  port: 8080
+
+db:
+  dsn: "postgres://keycloak:keycloak@localhost:5432/teamdocs?sslmode=disable"
+
+maxUploadBytes: 20971520 # файлы хранятся в БД (BYTEA)
+
+# Авторизация опциональна. По умолчанию выключена — приложение работает
+# открыто (identity = devUser). Включается, когда приложение стоит за
+# IAM-прокси (напр. oauth2-proxy перед Keycloak), который прокидывает JWT.
+# Брендинг и палитра отдаются фронту через GET /api/branding. Всё опционально —
+# без секции используются дефолты (тёплая «бумажная» тема). Цвета — сырые
+# RGB-компоненты «R G B» (как в CSS-переменных). Переопределять можно и через
+# env, напр. TEAMDOCS_BRANDING__APPNAME или TEAMDOCS_BRANDING__PALETTE__DARK__ACCENT.
+# branding:
+#   appName: "team-docs"
+#   workspaceName: "рабочее пространство"
+#   monogram: "td"
+#   # Цветовая схема по умолчанию (пользователь может сменить в UI — выбор
+#   # сохраняется в localStorage). Доступны:
+#   #   default | dracula | nord | tokyo | gruvbox | solarized | catppuccin
+#   # Можно и через env: TEAMDOCS_BRANDING__THEME=catppuccin
+#   theme: default
+
+auth:
+  enabled: false
+  # header: Authorization                 # откуда брать токен (снимаем "Bearer ")
+  # jwksUrl: "http://keycloak:8080/realms/teamdocs/protocol/openid-connect/certs"
+  # issuer: "http://keycloak:8080/realms/teamdocs"
+  # audience: "team-docs"
+  # hmacSecret: ""                         # альтернатива JWKS для HS256-токенов
+  # usernameClaim: preferred_username
+  # nameClaim: name
+  # emailClaim: email
+  # devUser: "Разработчик"

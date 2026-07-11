@@ -1,0 +1,55 @@
+# Taskfile для team-docs (https://taskfile.dev).
+# Установка: go install github.com/go-task/task/v3/cmd/task@latest
+version: "3"
+
+vars:
+  BIN: team-docs.exe
+
+tasks:
+  # --- разработка ---
+  dev:backend:
+    desc: Запустить Go-бэкенд (dev, API на :8080)
+    cmds:
+      - go run ./cmd/server
+
+  dev:frontend:
+    desc: Запустить Vite dev-сервер (:5173, proxy /api → :8080)
+    dir: web
+    cmds:
+      - npm run dev
+
+  # --- генерация ---
+  sqlc:
+    desc: Сгенерировать типобезопасный код доступа к БД
+    cmds:
+      - sqlc generate
+
+  # --- сборка ---
+  build:frontend:
+    desc: Собрать фронтенд в web/dist
+    dir: web
+    cmds:
+      - npm install
+      - npm run build
+
+  build:
+    desc: Собрать один бинарь со встроенным фронтом (web build → sqlc → go build -tags prod)
+    deps: [build:frontend]
+    cmds:
+      - sqlc generate
+      - go build -tags prod -o {{.BIN}} ./cmd/server
+
+  run:
+    desc: Собрать и запустить prod-бинарь
+    deps: [build]
+    cmds:
+      - ./{{.BIN}}
+
+  # --- качество ---
+  vet:
+    cmds:
+      - go vet ./...
+
+  tidy:
+    cmds:
+      - go mod tidy

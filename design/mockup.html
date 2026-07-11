@@ -1,0 +1,395 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>team-docs — макет</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              paper: "rgb(var(--c-paper) / <alpha-value>)",
+              card: "rgb(var(--c-card) / <alpha-value>)",
+              ink: "rgb(var(--c-ink) / <alpha-value>)",
+              body: "rgb(var(--c-body) / <alpha-value>)",
+              muted: "rgb(var(--c-muted) / <alpha-value>)",
+              faint: "rgb(var(--c-faint) / <alpha-value>)",
+              line: "rgb(var(--c-line) / <alpha-value>)",
+              accent: "rgb(var(--c-accent) / <alpha-value>)",
+              accentSoft: "rgb(var(--c-accent-soft) / <alpha-value>)",
+              marker: "rgb(var(--c-marker) / <alpha-value>)",
+            },
+            fontFamily: {
+              display: ['"Fraunces"', "serif"],
+              sans: ['"Inter"', "system-ui", "sans-serif"],
+              mono: ['"JetBrains Mono"', "monospace"],
+            },
+          },
+        },
+      };
+    </script>
+    <style>
+      /* Светлая (тёплая бумага) */
+      :root {
+        --c-paper: 251 250 248;
+        --c-card: 255 255 255;
+        --c-ink: 38 37 31;
+        --c-body: 64 60 51;
+        --c-muted: 139 133 122;
+        --c-faint: 168 162 150;
+        --c-line: 235 232 224;
+        --c-accent: 53 104 89;
+        --c-accent-soft: 231 239 234;
+        --c-marker: 247 233 160;
+      }
+      /* Тёмная (тёплый уголь, не ледяной чёрный) */
+      .dark {
+        --c-paper: 26 25 23;
+        --c-card: 33 31 28;
+        --c-ink: 240 237 230;
+        --c-body: 199 193 180;
+        --c-muted: 146 139 125;
+        --c-faint: 110 103 90;
+        --c-line: 50 46 41;
+        --c-accent: 78 158 120;
+        --c-accent-soft: 33 46 40;
+        --c-marker: 122 106 45;
+      }
+      body {
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+      }
+      ::selection {
+        background: rgb(var(--c-marker) / 0.7);
+      }
+      .marker {
+        background: linear-gradient(transparent 62%, rgb(var(--c-marker)) 62%);
+      }
+      /* тонкие тёплые скроллбары */
+      .scroll::-webkit-scrollbar {
+        width: 9px;
+      }
+      .scroll::-webkit-scrollbar-thumb {
+        background: rgb(var(--c-line));
+        border-radius: 8px;
+        border: 3px solid transparent;
+        background-clip: content-box;
+      }
+    </style>
+  </head>
+
+  <body class="bg-paper font-sans text-body">
+    <div class="flex h-screen overflow-hidden">
+      <!-- ░░ Сайдбар ░░ -->
+      <aside
+        class="flex w-[272px] shrink-0 flex-col border-r border-line bg-paper"
+      >
+        <!-- воркспейс -->
+        <div class="flex items-center gap-2.5 px-4 pb-2 pt-4">
+          <span
+            class="flex h-7 w-7 items-center justify-center rounded-lg bg-accent font-display text-sm font-600 text-white"
+            >td</span
+          >
+          <div class="leading-tight">
+            <div class="text-[14px] font-600 text-ink">team-docs</div>
+            <div class="text-[11px] text-faint">рабочее пространство</div>
+          </div>
+        </div>
+
+        <!-- поиск -->
+        <div class="px-3 pb-3 pt-1">
+          <button
+            class="flex w-full items-center gap-2 rounded-lg border border-line bg-card px-3 py-2 text-left text-[13px] text-muted transition hover:border-faint"
+          >
+            <svg class="h-4 w-4 text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="7" /><path d="m20 20-3-3" stroke-linecap="round" />
+            </svg>
+            Поиск…
+            <span class="ml-auto font-mono text-[11px] text-faint">⌘K</span>
+          </button>
+        </div>
+
+        <!-- дерево -->
+        <nav class="scroll flex-1 overflow-y-auto px-2 pb-4 text-[13.5px]">
+          <div class="px-2 pb-1 pt-3 text-[11px] font-600 uppercase tracking-[0.08em] text-faint">
+            Пространство
+          </div>
+
+          <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-line/60" href="#">
+            <span class="text-[15px]">🏠</span> Главная
+          </a>
+
+          <!-- активная ветка -->
+          <div class="mt-0.5">
+            <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-line/60" href="#">
+              <svg class="h-3 w-3 text-faint" viewBox="0 0 24 24" fill="currentColor"><path d="M9 5l7 7-7 7z"/></svg>
+              <span class="text-[15px]">📗</span> Инженерия
+            </a>
+            <div class="ml-3 border-l border-line pl-2">
+              <a class="relative -ml-[9px] flex items-center gap-2 rounded-md border-l-2 border-accent bg-accentSoft px-2 py-1.5 pl-3 font-500 text-ink" href="#">
+                <span class="text-[15px]">📘</span> Гайд для новичков
+              </a>
+              <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-line/60" href="#">
+                <span class="text-[15px]">🧭</span> Архитектура
+              </a>
+              <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-line/60" href="#">
+                <span class="text-[15px]">🚀</span> Релизы
+              </a>
+            </div>
+          </div>
+
+          <a class="mt-0.5 flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-line/60" href="#">
+            <svg class="h-3 w-3 rotate-0 text-faint" viewBox="0 0 24 24" fill="currentColor"><path d="M9 5l7 7-7 7z"/></svg>
+            <span class="text-[15px]">🎨</span> Дизайн
+          </a>
+          <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-line/60" href="#">
+            <span class="text-[15px]">📋</span> Процессы
+          </a>
+
+          <div class="px-2 pb-1 pt-5 text-[11px] font-600 uppercase tracking-[0.08em] text-faint">
+            Личное
+          </div>
+          <a class="flex items-center gap-2 rounded-md px-2 py-1.5 text-body hover:bg-line/60" href="#">
+            <span class="text-[15px]">📝</span> Черновики
+          </a>
+        </nav>
+
+        <!-- пользователь -->
+        <div class="flex items-center gap-2.5 border-t border-line px-4 py-3">
+          <span class="flex h-7 w-7 items-center justify-center rounded-full bg-ink text-[12px] font-600 text-white">Д</span>
+          <span class="text-[13px] text-body">Даниил</span>
+          <svg class="ml-auto h-4 w-4 text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path d="M8 9l4-4 4 4M8 15l4 4 4-4" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </div>
+      </aside>
+
+      <!-- ░░ Основная область ░░ -->
+      <main class="scroll flex-1 overflow-y-auto">
+        <!-- верхняя панель -->
+        <div class="sticky top-0 z-10 flex items-center gap-2 border-b border-line/70 bg-paper/80 px-8 py-3 backdrop-blur">
+          <div class="flex items-center gap-2 font-mono text-[11px] uppercase tracking-[0.06em] text-muted">
+            <span>Инженерия</span><span class="text-faint">/</span><span class="text-ink">Гайд для новичков</span>
+          </div>
+          <div class="ml-auto flex items-center gap-1.5">
+            <button id="theme-toggle" class="rounded-md p-1.5 text-muted transition hover:bg-line/60" title="Сменить тему">
+              <svg class="hidden h-[18px] w-[18px] dark:block" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" stroke-linecap="round"/></svg>
+              <svg class="block h-[18px] w-[18px] dark:hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="1.8"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" stroke-linejoin="round"/></svg>
+            </button>
+            <button class="rounded-md px-2.5 py-1.5 text-[13px] text-muted transition hover:bg-line/60">История</button>
+            <button class="rounded-md bg-accent px-3 py-1.5 text-[13px] font-500 text-white transition hover:bg-accent/90">Поделиться</button>
+          </div>
+        </div>
+
+        <section id="view-doc" class="mx-auto flex max-w-[1180px] gap-10 px-8 py-12 lg:px-14">
+          <!-- статья -->
+          <article class="min-w-0 flex-1">
+            <div class="mb-3 text-[52px] leading-none">📘</div>
+            <h1 class="font-display text-[46px] font-500 leading-[1.05] tracking-[-0.01em] text-ink">
+              Гайд для новичков
+            </h1>
+            <p class="mt-3 font-mono text-[12px] text-muted">
+              Обновлено · Даниил · 2 часа назад · 4 мин чтения
+            </p>
+
+            <div class="mt-8 space-y-5 text-[16.5px] leading-[1.75] text-body">
+              <p>
+                Добро пожаловать в команду. Этот документ проведёт тебя через
+                <span class="marker">первую неделю</span>: доступы, локальный запуск,
+                кодстайл и как мы релизим. Если что-то не сходится — правь прямо здесь,
+                документация живая.
+              </p>
+
+              <!-- callout -->
+              <div class="flex gap-3 rounded-xl border border-accent/20 bg-accentSoft px-4 py-3.5">
+                <span class="text-[18px]">💡</span>
+                <p class="text-[15px] leading-relaxed text-ink">
+                  Доступы к репозиториям и стендам выдаёт тимлид в первый день.
+                  Не жди — напиши в <span class="font-500">#onboarding</span>.
+                </p>
+              </div>
+
+              <h2 class="pt-4 font-display text-[26px] font-500 tracking-[-0.01em] text-ink">
+                Локальный запуск
+              </h2>
+              <p>Клонируй монорепу и подними зависимости одной командой:</p>
+
+              <!-- код -->
+              <div class="overflow-hidden rounded-xl border border-line bg-[#24231D]">
+                <div class="flex items-center gap-1.5 border-b border-white/5 px-4 py-2">
+                  <span class="h-2.5 w-2.5 rounded-full bg-[#e06c56]"></span>
+                  <span class="h-2.5 w-2.5 rounded-full bg-[#e0b64f]"></span>
+                  <span class="h-2.5 w-2.5 rounded-full bg-[#7fae6f]"></span>
+                  <span class="ml-2 font-mono text-[11px] text-white/40">terminal</span>
+                </div>
+                <pre class="overflow-x-auto px-4 py-3.5 font-mono text-[13.5px] leading-relaxed text-[#E7E3D8]"><span class="text-[#7fae6f]">$</span> git clone git@git:team/mono.git
+<span class="text-[#7fae6f]">$</span> task dev:backend   <span class="text-white/35"># API на :8080</span>
+<span class="text-[#7fae6f]">$</span> task dev:frontend  <span class="text-white/35"># UI на :5173</span></pre>
+              </div>
+
+              <h2 class="pt-4 font-display text-[26px] font-500 tracking-[-0.01em] text-ink">
+                Чек-лист первого дня
+              </h2>
+              <ul class="space-y-2.5">
+                <li class="flex items-start gap-3">
+                  <span class="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] bg-accent text-[11px] text-white">✓</span>
+                  <span>Получить доступы к Git, стендам и таск-трекеру</span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <span class="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-[5px] bg-accent text-[11px] text-white">✓</span>
+                  <span>Поднять проект локально</span>
+                </li>
+                <li class="flex items-start gap-3">
+                  <span class="mt-0.5 h-[18px] w-[18px] shrink-0 rounded-[5px] border-2 border-line"></span>
+                  <span class="text-muted">Сделать первый PR (README-фикс — отличный старт)</span>
+                </li>
+              </ul>
+
+              <h2 class="pt-4 font-display text-[26px] font-500 tracking-[-0.01em] text-ink">
+                Контакты
+              </h2>
+              <div class="overflow-hidden rounded-xl border border-line">
+                <table class="w-full text-[14.5px]">
+                  <thead class="bg-line/40 text-left font-mono text-[11px] uppercase tracking-wide text-muted">
+                    <tr><th class="px-4 py-2.5 font-500">Роль</th><th class="px-4 py-2.5 font-500">Человек</th><th class="px-4 py-2.5 font-500">Канал</th></tr>
+                  </thead>
+                  <tbody class="divide-y divide-line">
+                    <tr><td class="px-4 py-2.5">Тимлид</td><td class="px-4 py-2.5">Аня</td><td class="px-4 py-2.5 text-accent">#team-lead</td></tr>
+                    <tr><td class="px-4 py-2.5">DevOps</td><td class="px-4 py-2.5">Марк</td><td class="px-4 py-2.5 text-accent">#infra</td></tr>
+                    <tr><td class="px-4 py-2.5">Дизайн</td><td class="px-4 py-2.5">Лена</td><td class="px-4 py-2.5 text-accent">#design</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </article>
+
+          <!-- правый rail: на этой странице -->
+          <aside class="hidden w-52 shrink-0 xl:block">
+            <div class="sticky top-24">
+              <div class="mb-3 font-mono text-[11px] uppercase tracking-[0.08em] text-faint">
+                На этой странице
+              </div>
+              <ul class="space-y-2 border-l border-line text-[13px]">
+                <li><a class="-ml-px block border-l-2 border-accent pl-3 font-500 text-ink" href="#">Локальный запуск</a></li>
+                <li><a class="-ml-px block border-l-2 border-transparent pl-3 text-muted transition hover:text-ink" href="#">Чек-лист первого дня</a></li>
+                <li><a class="-ml-px block border-l-2 border-transparent pl-3 text-muted transition hover:text-ink" href="#">Контакты</a></li>
+              </ul>
+            </div>
+          </aside>
+        </section>
+
+        <!-- ░ Пустой экран ░ -->
+        <section id="view-empty" class="hidden">
+          <div class="mx-auto flex max-w-[560px] flex-col items-center px-8 py-32 text-center">
+            <div class="mb-6 text-[56px]">🪶</div>
+            <h2 class="font-display text-[30px] font-500 tracking-[-0.01em] text-ink">
+              Чистый лист
+            </h2>
+            <p class="mt-3 text-[15.5px] leading-relaxed text-muted">
+              Здесь пока ничего нет. Создай первую страницу — или начни печатать,
+              документ сохранится сам.
+            </p>
+            <div class="mt-7 flex items-center gap-3">
+              <button class="rounded-lg bg-accent px-4 py-2.5 text-[14px] font-500 text-white transition hover:bg-accent/90">
+                + Новая страница
+              </button>
+              <button class="rounded-lg border border-line bg-card px-4 py-2.5 text-[14px] text-body transition hover:border-faint">
+                Импорт из Markdown
+              </button>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ░ Командная палитра (поиск) ░ -->
+    <div id="palette" class="fixed inset-0 z-30 hidden">
+      <div id="palette-bg" class="absolute inset-0 bg-ink/20 backdrop-blur-[2px]"></div>
+      <div class="absolute left-1/2 top-[18vh] w-[92%] max-w-[560px] -translate-x-1/2 overflow-hidden rounded-2xl border border-line bg-card shadow-2xl">
+        <div class="flex items-center gap-3 border-b border-line px-4 py-3.5">
+          <svg class="h-4 w-4 text-faint" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3-3" stroke-linecap="round"/></svg>
+          <input autofocus placeholder="Поиск по документации…" class="w-full bg-transparent text-[15px] text-ink outline-none placeholder:text-faint" value="запуск" />
+          <span class="rounded border border-line px-1.5 py-0.5 font-mono text-[10px] text-faint">esc</span>
+        </div>
+        <div class="max-h-[52vh] overflow-y-auto p-2">
+          <div class="px-2 pb-1 pt-2 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">Результаты</div>
+          <a href="#" class="flex items-center gap-3 rounded-lg bg-accentSoft px-3 py-2.5">
+            <span class="text-[16px]">📘</span>
+            <span class="min-w-0">
+              <span class="block text-[14px] font-500 text-ink">Гайд для новичков</span>
+              <span class="block truncate text-[12px] text-muted">…локальный <mark class="bg-marker px-0.5">запуск</mark> одной командой…</span>
+            </span>
+            <span class="ml-auto font-mono text-[11px] text-faint">↵</span>
+          </a>
+          <a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-line/50">
+            <span class="text-[16px]">🚀</span>
+            <span class="min-w-0">
+              <span class="block text-[14px] font-500 text-ink">Релизы</span>
+              <span class="block truncate text-[12px] text-muted">…<mark class="bg-marker px-0.5">запуск</mark> в прод по пятницам запрещён…</span>
+            </span>
+          </a>
+          <div class="px-2 pb-1 pt-3 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">Недавние</div>
+          <a href="#" class="flex items-center gap-3 rounded-lg px-3 py-2.5 hover:bg-line/50">
+            <span class="text-[16px]">🧭</span><span class="text-[14px] text-body">Архитектура</span>
+          </a>
+        </div>
+      </div>
+    </div>
+
+    <!-- переключатель экранов (только для демо-макета) -->
+    <div class="fixed bottom-5 left-1/2 z-20 flex -translate-x-1/2 items-center gap-1 rounded-full border border-line bg-card/90 p-1 shadow-lg backdrop-blur">
+      <button data-view="doc" class="rounded-full px-3.5 py-1.5 text-[13px] font-500 text-white bg-accent">Документ</button>
+      <button data-view="empty" class="rounded-full px-3.5 py-1.5 text-[13px] text-muted hover:text-ink">Пусто</button>
+      <button data-view="search" class="rounded-full px-3.5 py-1.5 text-[13px] text-muted hover:text-ink">⌘ Поиск</button>
+    </div>
+
+    <script>
+      const doc = document.getElementById("view-doc");
+      const empty = document.getElementById("view-empty");
+      const palette = document.getElementById("palette");
+      const switcher = document.querySelectorAll("[data-view]");
+
+      function setActive(view) {
+        switcher.forEach((b) => {
+          const on = b.dataset.view === view;
+          b.classList.toggle("bg-accent", on);
+          b.classList.toggle("text-white", on);
+          b.classList.toggle("font-500", on);
+          b.classList.toggle("text-muted", !on);
+        });
+      }
+      function showDoc() { doc.classList.remove("hidden"); empty.classList.add("hidden"); setActive("doc"); }
+      function showEmpty() { empty.classList.remove("hidden"); doc.classList.add("hidden"); setActive("empty"); }
+      function openPalette() { palette.classList.remove("hidden"); setActive("search"); }
+      function closePalette() { palette.classList.add("hidden"); setActive(empty.classList.contains("hidden") ? "doc" : "empty"); }
+
+      document.querySelector('[data-view="doc"]').onclick = showDoc;
+      document.querySelector('[data-view="empty"]').onclick = showEmpty;
+      document.querySelector('[data-view="search"]').onclick = openPalette;
+      document.querySelector(".flex.w-full.items-center.gap-2.rounded-lg")?.addEventListener("click", openPalette);
+      document.getElementById("palette-bg").onclick = closePalette;
+      document.addEventListener("keydown", (e) => {
+        if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") { e.preventDefault(); openPalette(); }
+        if (e.key === "Escape") closePalette();
+      });
+      // Переключатель темы.
+      const root = document.documentElement;
+      const prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+      if (prefersDark) root.classList.add("dark");
+      document.getElementById("theme-toggle").onclick = () => root.classList.toggle("dark");
+
+      // Для скриншотов/демо: #empty и #search открывают экран; #dark включает тёмную.
+      if (location.hash.includes("empty")) showEmpty();
+      if (location.hash.includes("search")) openPalette();
+      if (location.hash.includes("dark")) root.classList.add("dark");
+      if (location.hash.includes("light")) root.classList.remove("dark");
+    </script>
+  </body>
+</html>

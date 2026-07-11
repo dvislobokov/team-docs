@@ -1,0 +1,101 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+# Отменяем предыдущие запуски того же ref при новом пуше.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  frontend:
+    name: Фронтенд (lint + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+      - name: Lint (oxlint)
+        run: npm run lint
+      - name: Typecheck + build (tsc + vite)
+        run: npm run build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+          retention-days: 7
+
+  backend:
+    name: Бэкенд (vet + build + sqlc)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "Файлы не отформатированы gofmt:"; echo "$unformatted"; exit 1
+          fi
+
+      - run: go vet ./...
+
+      # Dev-сборка (без тега prod — фронт не встраивается).
+      - run: go build ./...
+
+      - name: sqlc сгенерирован из актуальных запросов
+        uses: sqlc-dev/setup-sqlc@v4
+        with:
+          sqlc-version: "1.31.1"
+      - name: Проверить, что sqlc-код не устарел
+        run: |
+          sqlc generate
+          git diff --exit-code -- internal/store || {
+            echo "Сгенерированный sqlc-код устарел — запустите 'sqlc generate' и закоммитьте.";
+            exit 1;
+          }
+
+  build:
+    name: Prod-бинарь (встроенный фронт)
+    needs: [frontend, backend]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      # Кладём собранный фронт в web/dist для //go:embed (тег prod).
+      - uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: web/dist
+
+      - name: Сборка встроенного бинаря
+        run: go build -tags prod -o team-docs ./cmd/server
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: team-docs-linux-amd64
+          path: team-docs
+          retention-days: 7
