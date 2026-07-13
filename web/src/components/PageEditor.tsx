@@ -18,6 +18,7 @@ import {
   calloutMenuItems,
   mentionMenuItems,
   mermaidMenuItems,
+  openApiMenuItems,
   schema,
   statusMenuItems,
 } from "../lib/editorSchema";
@@ -105,6 +106,7 @@ export function PageEditor({ initialContent, editable, theme, onChange }: PageEd
         ...calloutMenuItems(editor, "Выноска: "),
         ...statusMenuItems(editor),
         ...mermaidMenuItems(editor),
+        ...openApiMenuItems(editor),
       ],
       query,
     );

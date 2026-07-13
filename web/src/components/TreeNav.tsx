@@ -22,6 +22,7 @@ import { createPage, deletePage } from "../api/pages";
 import { duplicatePage, exportPageMarkdown, renamePage } from "../lib/pageActions";
 import { planMove, type DropMode } from "../lib/tree";
 import type { TreeItem } from "../lib/tree";
+import { useAuth } from "../store/auth";
 import { useConfirm } from "../store/confirm";
 import { useToast } from "../store/toast";
 import { useTree } from "../store/tree";
@@ -40,6 +41,7 @@ function Node({ item, depth }: { item: TreeItem; depth: number }) {
   const navigate = useNavigate();
   const { reload } = useTree();
   const dnd = useDnd();
+  const { canEdit } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -150,7 +152,7 @@ function Node({ item, depth }: { item: TreeItem; depth: number }) {
         )}
 
         <div
-          draggable={!renaming}
+          draggable={!renaming && canEdit}
           onDragStart={(e) => {
             e.dataTransfer.effectAllowed = "move";
             e.dataTransfer.setData("text/plain", String(item.id));
@@ -243,34 +245,44 @@ function Node({ item, depth }: { item: TreeItem; depth: number }) {
               >
                 <MoreHorizontal className="h-3.5 w-3.5" />
               </button>
-              <button
-                type="button"
-                onClick={addChild}
-                className="rounded p-0.5 text-faint opacity-0 transition hover:bg-line/70 hover:text-ink group-hover:opacity-100"
-                title="Добавить под-страницу"
-                disabled={busy}
-              >
-                <Plus className="h-3.5 w-3.5" />
-              </button>
+              {canEdit && (
+                <button
+                  type="button"
+                  onClick={addChild}
+                  className="rounded p-0.5 text-faint opacity-0 transition hover:bg-line/70 hover:text-ink group-hover:opacity-100"
+                  title="Добавить под-страницу"
+                  disabled={busy}
+                >
+                  <Plus className="h-3.5 w-3.5" />
+                </button>
+              )}
 
               {menuOpen && (
                 <div className="animate-fade-in absolute right-0 top-full z-50 mt-1 w-52 overflow-hidden rounded-lg border border-line bg-card py-1 shadow-xl">
-                  <MenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => { setMenuOpen(false); setRenameValue(item.title); setRenaming(true); }}>
-                    Переименовать
-                  </MenuItem>
-                  <MenuItem icon={<FilePlus className="h-4 w-4" />} onClick={() => { setMenuOpen(false); addChild(); }}>
-                    Добавить под-страницу
-                  </MenuItem>
-                  <MenuItem icon={<Copy className="h-4 w-4" />} onClick={doDuplicate}>
-                    Дублировать
-                  </MenuItem>
+                  {canEdit && (
+                    <>
+                      <MenuItem icon={<Pencil className="h-4 w-4" />} onClick={() => { setMenuOpen(false); setRenameValue(item.title); setRenaming(true); }}>
+                        Переименовать
+                      </MenuItem>
+                      <MenuItem icon={<FilePlus className="h-4 w-4" />} onClick={() => { setMenuOpen(false); addChild(); }}>
+                        Добавить под-страницу
+                      </MenuItem>
+                      <MenuItem icon={<Copy className="h-4 w-4" />} onClick={doDuplicate}>
+                        Дублировать
+                      </MenuItem>
+                    </>
+                  )}
                   <MenuItem icon={<Download className="h-4 w-4" />} onClick={doExport}>
                     Экспорт в Markdown
                   </MenuItem>
-                  <div className="my-1 border-t border-line" />
-                  <MenuItem icon={<Trash2 className="h-4 w-4" />} onClick={doDelete} danger>
-                    Удалить
-                  </MenuItem>
+                  {canEdit && (
+                    <>
+                      <div className="my-1 border-t border-line" />
+                      <MenuItem icon={<Trash2 className="h-4 w-4" />} onClick={doDelete} danger>
+                        Удалить
+                      </MenuItem>
+                    </>
+                  )}
                 </div>
               )}
             </div>

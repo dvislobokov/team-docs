@@ -12,6 +12,7 @@ import { exportPageMarkdown } from "../lib/pageActions";
 import { pushRecent } from "../lib/recents";
 import { useTheme } from "../lib/theme";
 import { pathToNode } from "../lib/tree";
+import { useAuth } from "../store/auth";
 import { useConfirm } from "../store/confirm";
 import { useToast } from "../store/toast";
 import { useTree } from "../store/tree";
@@ -35,6 +36,7 @@ export function PageScreen() {
   const theme = useTheme();
   const width = useContentWidth();
   const { nodes, reload } = useTree();
+  const { canEdit } = useAuth();
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -227,13 +229,15 @@ export function PageScreen() {
 
   const actions = (
     <>
-      <button
-        type="button"
-        onClick={() => setHistoryOpen(true)}
-        className="rounded-md px-2.5 py-1.5 text-[13px] text-muted transition hover:bg-line/60"
-      >
-        История
-      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => setHistoryOpen(true)}
+          className="rounded-md px-2.5 py-1.5 text-[13px] text-muted transition hover:bg-line/60"
+        >
+          История
+        </button>
+      )}
       <button
         type="button"
         onClick={doExport}
@@ -242,28 +246,32 @@ export function PageScreen() {
       >
         <Download className="h-[17px] w-[17px]" />
       </button>
-      <button
-        type="button"
-        onClick={remove}
-        className="rounded-md p-1.5 text-muted transition hover:bg-line/60 hover:text-ink"
-        title="Удалить страницу"
-      >
-        <Trash2 className="h-[17px] w-[17px]" />
-      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={remove}
+          className="rounded-md p-1.5 text-muted transition hover:bg-line/60 hover:text-ink"
+          title="Удалить страницу"
+        >
+          <Trash2 className="h-[17px] w-[17px]" />
+        </button>
+      )}
       <ShareButton />
-      <button
-        type="button"
-        onClick={() => setEditing((v) => !v)}
-        className={
-          "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-500 transition " +
-          (editing
-            ? "border border-line text-body hover:bg-line/60"
-            : "bg-accent text-white hover:bg-accent/90")
-        }
-      >
-        {!editing && <Pencil className="h-3.5 w-3.5" />}
-        {editing ? "Готово" : "Редактировать"}
-      </button>
+      {canEdit && (
+        <button
+          type="button"
+          onClick={() => setEditing((v) => !v)}
+          className={
+            "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] font-500 transition " +
+            (editing
+              ? "border border-line text-body hover:bg-line/60"
+              : "bg-accent text-white hover:bg-accent/90")
+          }
+        >
+          {!editing && <Pencil className="h-3.5 w-3.5" />}
+          {editing ? "Готово" : "Редактировать"}
+        </button>
+      )}
     </>
   );
 
@@ -289,6 +297,7 @@ export function PageScreen() {
             <EmojiButton
               value={page.icon}
               onChange={onIconChange}
+              disabled={!canEdit}
               fallback="📄"
               triggerClassName="flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-xl text-[36px] leading-none transition hover:bg-line/50 md:h-[60px] md:w-[60px] md:text-[46px]"
             />
@@ -327,7 +336,7 @@ export function PageScreen() {
                 <PageEditor
                   key={`${page.id}-${editorEpoch}`}
                   initialContent={page.content}
-                  editable={editing}
+                  editable={editing && canEdit}
                   theme={theme}
                   onChange={onContentChange}
                 />

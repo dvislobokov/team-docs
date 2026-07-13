@@ -10,6 +10,9 @@ coverage.*
 # Go workspace
 go.work
 go.work.sum
+# Вендоринг: зависимости тянутся из go.mod/go.sum (go mod download).
+# Локально каталог используется для -mod=vendor, но в репозиторий не кладём.
+/vendor/
 
 # ── Фронтенд (Vite) ─────────────────────────────────
 /web/node_modules/

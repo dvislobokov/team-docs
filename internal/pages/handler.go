@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"net/url"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/dvislobokov/srog"
@@ -13,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 
+	"team-docs/internal/blocknote"
 	"team-docs/internal/store"
 )
 
@@ -39,6 +42,7 @@ func (h *Handler) Register(api *echo.Group) {
 	api.DELETE("/pages/:id", h.delete)
 	api.GET("/pages/:id/revisions", h.revisions)
 	api.GET("/pages/:id/revisions/:revId", h.revision)
+	api.GET("/pages/:id/markdown", h.exportMarkdown)
 	api.GET("/search", h.search)
 }
 
@@ -162,7 +166,7 @@ func (h *Handler) update(c echo.Context) error {
 		ID:          id,
 		Title:       req.Title,
 		Content:     []byte(req.Content),
-		ContentText: extractText(req.Content),
+		ContentText: ExtractText(req.Content),
 		Version:     req.Version,
 		Icon:        req.Icon,
 	})
@@ -292,6 +296,37 @@ func (h *Handler) revision(c echo.Context) error {
 		Content:   json.RawMessage(row.Content),
 		CreatedAt: row.CreatedAt.Time,
 	})
+}
+
+// exportMarkdown отдаёт страницу как .md (с заголовком H1).
+func (h *Handler) exportMarkdown(c echo.Context) error {
+	id, err := pathID(c)
+	if err != nil {
+		return err
+	}
+	row, err := h.q.GetPage(c.Request().Context(), id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return echo.NewHTTPError(http.StatusNotFound, "page not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "export markdown")
+	}
+	body, err := blocknote.ToMarkdown(row.Content)
+	if err != nil {
+		return h.fail(c, err, "convert markdown")
+	}
+	md := "# " + row.Title + "\n\n" + body
+
+	safe := strings.Map(func(r rune) rune {
+		if strings.ContainsRune(`\/:*?"<>|`, r) {
+			return '_'
+		}
+		return r
+	}, row.Title)
+	// RFC 5987: имя файла может быть кириллическим — кодируем в filename*.
+	c.Response().Header().Set("Content-Disposition",
+		"attachment; filename=\"page.md\"; filename*=UTF-8''"+url.PathEscape(safe+".md"))
+	return c.Blob(http.StatusOK, "text/markdown; charset=utf-8", []byte(md))
 }
 
 func (h *Handler) search(c echo.Context) error {

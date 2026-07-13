@@ -84,5 +84,5 @@ function FullScreen({ children }: { children: ReactNode }) {
 export function useAuth(): Me {
   const ctx = useContext(AuthContext);
   // Внутри AuthProvider (status=ready) контекст всегда есть.
-  return ctx ?? { authenticated: false, username: "", name: "", email: "", groups: null };
+  return ctx ?? { authenticated: false, canEdit: false, username: "", name: "", email: "", groups: null };
 }

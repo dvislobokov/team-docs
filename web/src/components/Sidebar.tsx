@@ -96,30 +96,32 @@ export function Sidebar() {
           <span className="text-[11px] font-600 uppercase tracking-[0.08em] text-faint">
             Пространство
           </span>
-          <span className="flex items-center gap-0.5">
-            <ImportMarkdown
-              title="Импорт из файла Markdown"
-              className="cursor-pointer rounded p-0.5 text-faint transition hover:bg-line/70 hover:text-ink"
-            >
-              <Upload className="h-3.5 w-3.5" />
-            </ImportMarkdown>
-            <PasteMarkdown
-              title="Вставить Markdown"
-              className="rounded p-0.5 text-faint transition hover:bg-line/70 hover:text-ink"
-            >
-              <ClipboardPaste className="h-3.5 w-3.5" />
-            </PasteMarkdown>
-            <button
-              type="button"
-              data-tour="new-page"
-              onClick={newRootPage}
-              className="rounded p-0.5 text-faint transition hover:bg-line/70 hover:text-ink"
-              title="Новая страница"
-              disabled={busy}
-            >
-              <Plus className="h-3.5 w-3.5" />
-            </button>
-          </span>
+          {user.canEdit && (
+            <span className="flex items-center gap-0.5">
+              <ImportMarkdown
+                title="Импорт из файла Markdown"
+                className="cursor-pointer rounded p-0.5 text-faint transition hover:bg-line/70 hover:text-ink"
+              >
+                <Upload className="h-3.5 w-3.5" />
+              </ImportMarkdown>
+              <PasteMarkdown
+                title="Вставить Markdown"
+                className="rounded p-0.5 text-faint transition hover:bg-line/70 hover:text-ink"
+              >
+                <ClipboardPaste className="h-3.5 w-3.5" />
+              </PasteMarkdown>
+              <button
+                type="button"
+                data-tour="new-page"
+                onClick={newRootPage}
+                className="rounded p-0.5 text-faint transition hover:bg-line/70 hover:text-ink"
+                title="Новая страница"
+                disabled={busy}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </span>
+          )}
         </div>
 
         <TreeNav />

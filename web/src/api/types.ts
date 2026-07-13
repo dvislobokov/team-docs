@@ -71,6 +71,7 @@ export interface UploadResponse {
 /** Текущий пользователь (GET /api/me). В открытом режиме — devUser. */
 export interface Me {
   authenticated: boolean;
+  canEdit: boolean;
   username: string;
   name: string;
   email: string;

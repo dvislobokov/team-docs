@@ -13,8 +13,9 @@ import (
 //   - "children": массив вложенных блоков.
 //
 // Функция толерантна к структуре: собирает все строковые поля "text",
-// обходя вложенные "content" и "children".
-func extractText(doc []byte) string {
+// обходя вложенные "content" и "children". Экспортирована — переиспользуется
+// MCP-сервером для чтения текста существующих страниц.
+func ExtractText(doc []byte) string {
 	if len(doc) == 0 {
 		return ""
 	}

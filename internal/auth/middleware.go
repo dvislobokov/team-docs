@@ -9,7 +9,9 @@ import (
 )
 
 // Middleware проверяет JWT и кладёт identity в контекст. При выключенной
-// авторизации пропускает запрос, подставляя dev-пользователя.
+// авторизации пропускает запрос, подставляя dev-пользователя. Если авторизация
+// включена, но токена нет и разрешено публичное чтение (PublicRead) — пропускает
+// как анонима (identity не устанавливается; запись отсечёт RequireEditor).
 func Middleware(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -20,6 +22,9 @@ func Middleware(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
 
 			raw := extractToken(c, a.cfg.Header)
 			if raw == "" {
+				if a.PublicRead() {
+					return next(c) // аноним — читать можно, писать нельзя
+				}
 				return echo.NewHTTPError(http.StatusUnauthorized, "missing authorization token")
 			}
 			u, err := a.Verify(raw)
@@ -31,6 +36,50 @@ func Middleware(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
 			return next(c)
 		}
 	}
+}
+
+// RequireEditor — гард на запись: методы, изменяющие данные (POST/PUT/PATCH/
+// DELETE), доступны только пользователю с правом редактирования; чтение
+// (GET/HEAD/OPTIONS) пропускается. При выключенной авторизации — no-op.
+// Ставится на группу /api ПОСЛЕ Middleware.
+func RequireEditor(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if !a.Enabled() {
+				return next(c)
+			}
+			switch c.Request().Method {
+			case http.MethodGet, http.MethodHead, http.MethodOptions:
+				return next(c)
+			}
+			return enforceEditor(c, a, next)
+		}
+	}
+}
+
+// RequireEditorStrict требует право редактирования независимо от HTTP-метода —
+// для чувствительных операций (напр. полный экспорт БД, MCP). No-op без авторизации.
+func RequireEditorStrict(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if !a.Enabled() {
+				return next(c)
+			}
+			return enforceEditor(c, a, next)
+		}
+	}
+}
+
+// enforceEditor: 401 если аноним, 403 если аутентифицирован, но без права правки.
+func enforceEditor(c echo.Context, a *Authenticator, next echo.HandlerFunc) error {
+	u, ok := FromContext(c)
+	if !ok || u == nil {
+		return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+	}
+	if !a.CanEdit(u) {
+		return echo.NewHTTPError(http.StatusForbidden, "editing not allowed for this user")
+	}
+	return next(c)
 }
 
 func extractToken(c echo.Context, header string) string {

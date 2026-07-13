@@ -20,6 +20,9 @@
   текст и наоборот).
 - **Mermaid**: блок-схемы, sequence, gantt, class, ER, state, mindmap — и
   **графики** (столбцы/линия через `xychart`, круговая). Рендер под тему, lazy-load.
+- **OpenAPI**: блок с полноценным рендером спецификации через **Redoc**
+  (трёхколоночная документация, схемы, примеры, разрешение `$ref`). Источник —
+  URL или вставленный YAML/JSON. Тема-совместимый (light/dark), lazy-load.
 - **Медиа**: загрузка картинок/файлов — содержимое хранится в БД (BYTEA).
 
 **Навигация и поиск:**
@@ -34,12 +37,17 @@
 - Брендинг (название/монограмма/палитра) конфигурируется без пересборки фронта.
 
 **Прочее:** история версий и откат · импорт/экспорт Markdown (файл и вставка) ·
+полный **бэкап/восстановление БД** одним JSON-файлом (меню оформления → «Данные») ·
 приветственный тур · автосейв с optimistic-lock (409 при конфликте) ·
 тосты и стилизованные подтверждения · адаптивный сворачиваемый сайдбар ·
 локализация редактора на русский.
 
 **Авторизация (опциональна):** проверка JWT от IAM-прокси (RS256 по JWKS либо
-HS256 по секрету). По умолчанию выключена — открытый режим для разработки.
+HS256 по секрету). По умолчанию выключена — открытый режим для разработки. При
+включении — разделение **чтение / запись**: смотреть могут все (в т.ч. анонимно,
+если `publicRead`), а **редактировать — только авторизованные** (любой вошедший
+или только члены `editorGroups`). UI-элементы правки скрываются для читателей,
+бэкенд отдаёт `403`/`401` на запись.
 
 | Поиск (`⌘K`) | Темы и оформление |
 |---|---|
@@ -48,8 +56,8 @@ HS256 по секрету). По умолчанию выключена — от�
 ## Стек
 
 - **Фронт:** React 19 + TypeScript + Tailwind CSS + Radix + BlockNote
-  (`+ xl-multi-column`, `mermaid`, `floating-ui`) на Vite. Локальные шрифты
-  PT Serif / Inter / JetBrains Mono.
+  (`+ xl-multi-column`, `mermaid`, `redoc` для OpenAPI, `floating-ui`) на Vite.
+  Локальные шрифты PT Serif / Inter / JetBrains Mono.
 - **Бэк:** Go + [Echo](https://echo.labstack.com/), JWT ([golang-jwt](https://github.com/golang-jwt/jwt)).
 - **БД:** PostgreSQL, доступ через [sqlc](https://sqlc.dev/) + `pgx/v5`.
 - **Конфиг:** [sconf](https://github.com/dvislobokov/sconf) (YAML + env).
@@ -88,7 +96,10 @@ auth:
   enabled: false
   # jwksUrl: "http://keycloak:8080/realms/teamdocs/protocol/openid-connect/certs"
   # issuer:  "http://keycloak:8080/realms/teamdocs"
-  # hmacSecret: ""   # альтернатива JWKS для HS256
+  # hmacSecret: ""      # альтернатива JWKS для HS256
+  publicRead: true       # анонимное чтение (GET); запись всегда требует вход
+  editorGroups: []       # пусто → писать может любой вошедший; иначе — только
+                         # члены этих групп/ролей (claim groups или realm_access.roles)
 ```
 
 Схема БД применяется автоматически при старте (миграции встроены в бинарь).
@@ -139,7 +150,10 @@ internal/
   pages/             /api/pages/*, /api/search + извлечение текста из BlockNote
   uploads/           /api/upload, /api/files/:id (содержимое в БД)
   auth/              валидация JWT (JWKS/HMAC), middleware, /api/me
-  server/            сборка Echo, middleware, /api/branding, SPA-fallback
+  backup/            полный экспорт/импорт БД одним JSON-дампом
+  blocknote/         конвертер Markdown → блоки BlockNote
+  mcp/               MCP-сервер (инструменты) на /mcp
+  server/            сборка Echo, middleware, /api/branding, /mcp, SPA-fallback
 web/                 фронтенд (Vite); embed.go встраивает dist в prod-сборке
 ```
 
@@ -158,12 +172,52 @@ web/                 фронтенд (Vite); embed.go встраивает dist
 | DELETE | `/api/pages/:id` | удалить (каскад поддерева) |
 | GET | `/api/pages/:id/revisions` | список версий |
 | GET | `/api/pages/:id/revisions/:revId` | контент версии (для отката) |
+| GET | `/api/pages/:id/markdown` | экспорт страницы в Markdown (`.md`) |
 | GET | `/api/search?q=` | полнотекстовый поиск |
 | POST | `/api/upload` | загрузка файла (в БД) |
 | GET | `/api/files/:id` | отдать файл |
+| GET | `/api/backup/export` | полный дамп БД (`.json`: страницы, версии, файлы) |
+| POST | `/api/backup/import` | восстановление БД из дампа (**полная перезапись**) |
 
 Все `/api/*`, кроме `/api/health` и `/api/branding`, проходят через middleware
-авторизации (в открытом режиме оно подставляет dev-пользователя).
+авторизации (в открытом режиме оно подставляет dev-пользователя). При включённой
+авторизации доступ разграничен: `GET` — чтение (для всех, если `publicRead`),
+а `POST/PUT/PATCH/DELETE` и выгрузка БД — только для пользователя с правом правки
+(`RequireEditor`/`RequireEditorStrict`, иначе `401`/`403`). `/mcp` при включённой
+авторизации закрывается теми же гардами.
+
+## MCP — генерация доков LLM-агентом → прямо в team-docs
+
+Сервер поднимает **MCP-эндпоинт** (Streamable HTTP) на `/mcp`. Подключите
+MCP-клиент (Claude Desktop, Cursor, свой агент) по URL
+`http://localhost:8080/mcp` — и LLM сможет читать структуру, искать и
+**создавать/обновлять страницы прямо из Markdown**.
+
+| Инструмент | Назначение |
+|---|---|
+| `list_pages` | дерево страниц (чтобы выбрать родителя) |
+| `search_pages(query)` | полнотекстовый поиск |
+| `get_page(id)` | прочитать (заголовок + текст) |
+| `create_page(title, markdown, parent_id?)` | создать страницу из Markdown |
+| `update_page(id, markdown, title?)` | перезаписать содержимое |
+| `append_to_page(id, markdown)` | дописать в конец, не трогая существующее |
+| `export_page(id)` | экспортировать страницу в Markdown |
+| `move_page(id, parent_id?, position?)` | переместить |
+| `delete_page(id)` | удалить страницу и поддерево |
+| `list_revisions(id)` | история версий |
+
+Экспорт доступен и по REST: `GET /api/pages/:id/markdown` (скачивание `.md`).
+
+Markdown (заголовки, списки, код, цитаты, `**жирный**`/`*курсив*`/`` `код` ``,
+ссылки) конвертируется в блоки BlockNote (`internal/blocknote`) и рендерится
+нативно. Пример конфигурации remote-MCP:
+
+```json
+{ "mcpServers": { "team-docs": { "url": "http://localhost:8080/mcp" } } }
+```
+
+> `/mcp` не закрыт auth-middleware — рассчитан на локальную/доверенную интеграцию;
+> при включённой авторизации закрывается тем же middleware.
 
 ## Заметки
 

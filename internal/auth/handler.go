@@ -7,11 +7,11 @@ import (
 )
 
 // Handler отдаёт текущего пользователя фронтенду.
-type Handler struct{}
+type Handler struct{ a *Authenticator }
 
-func NewHandler() *Handler { return &Handler{} }
+func NewHandler(a *Authenticator) *Handler { return &Handler{a: a} }
 
-// Register вешает GET /api/me на защищённую группу.
+// Register вешает GET /api/me на группу /api.
 func (h *Handler) Register(api *echo.Group) {
 	api.GET("/me", h.me)
 }
@@ -19,10 +19,12 @@ func (h *Handler) Register(api *echo.Group) {
 func (h *Handler) me(c echo.Context) error {
 	u, ok := FromContext(c)
 	if !ok || u == nil {
-		return echo.NewHTTPError(http.StatusUnauthorized, "unauthenticated")
+		// Анонимный доступ при PublicRead — не ошибка: отдаём статус «не вошёл».
+		return c.JSON(http.StatusOK, echo.Map{"authenticated": false, "canEdit": false})
 	}
 	return c.JSON(http.StatusOK, echo.Map{
 		"authenticated": true,
+		"canEdit":       !h.a.Enabled() || h.a.CanEdit(u),
 		"username":      u.Username,
 		"name":          u.Name,
 		"email":         u.Email,

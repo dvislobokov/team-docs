@@ -83,6 +83,14 @@ type AuthSettings struct {
 	EmailClaim    string `yaml:"emailClaim" default:"email"`
 	// Имя пользователя в открытом (dev) режиме.
 	DevUser string `yaml:"devUser" default:"Разработчик"`
+
+	// EditorGroups — группы/роли (из claim groups либо realm_access.roles),
+	// которым разрешено редактирование (запись). Пусто → редактировать может
+	// любой аутентифицированный пользователь.
+	EditorGroups []string `yaml:"editorGroups"`
+	// PublicRead — при true неаутентифицированные пользователи могут читать (GET),
+	// но не изменять данные. false → любое обращение к API требует токен.
+	PublicRead bool `yaml:"publicRead" default:"true"`
 }
 
 // Load читает конфигурацию из файла (опционально) и переменных окружения.

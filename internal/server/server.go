@@ -45,6 +45,13 @@ func (s *Server) Echo() *echo.Echo {
 	return s.echo
 }
 
+// RegisterMCP монтирует MCP-эндпоинт (Streamable HTTP) на /mcp. Вне группы /api
+// и без auth-middleware — рассчитано на локальную/доверенную интеграцию; при
+// включённой авторизации можно закрыть тем же middleware.
+func (s *Server) RegisterMCP(h http.Handler, mw ...echo.MiddlewareFunc) {
+	s.echo.Any("/mcp", echo.WrapHandler(h), mw...)
+}
+
 // API возвращает группу /api для регистрации модулей.
 func (s *Server) API() *echo.Group {
 	return s.echo.Group("/api")

@@ -32,6 +32,29 @@ func New(cfg config.AuthSettings) (*Authenticator, error) {
 // Enabled сообщает, включена ли проверка авторизации.
 func (a *Authenticator) Enabled() bool { return a.cfg.Enabled }
 
+// PublicRead — разрешено ли анонимное чтение (GET) при включённой авторизации.
+func (a *Authenticator) PublicRead() bool { return a.cfg.PublicRead }
+
+// CanEdit сообщает, вправе ли пользователь изменять контент (запись). Без
+// настроенных EditorGroups редактировать может любой аутентифицированный;
+// иначе требуется принадлежность к одной из групп/ролей.
+func (a *Authenticator) CanEdit(u *User) bool {
+	if u == nil {
+		return false
+	}
+	if len(a.cfg.EditorGroups) == 0 {
+		return true
+	}
+	for _, g := range u.Groups {
+		for _, e := range a.cfg.EditorGroups {
+			if g == e {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // keyfunc выбирает ключ по алгоритму токена (HMAC-секрет или RSA-ключ из JWKS).
 func (a *Authenticator) keyfunc(t *jwt.Token) (any, error) {
 	if _, ok := t.Method.(*jwt.SigningMethodHMAC); ok {

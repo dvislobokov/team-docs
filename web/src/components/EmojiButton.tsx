@@ -10,6 +10,8 @@ interface EmojiButtonProps {
   triggerClassName?: string;
   /** Разрешить снять иконку (кнопка «Убрать» в пикере). */
   allowRemove?: boolean;
+  /** Только просмотр: показываем иконку без пикара (нет прав на правку). */
+  disabled?: boolean;
 }
 
 // Триггер-иконка с всплывающим emoji-пикером. Закрывается по клику вне и Esc.
@@ -19,6 +21,7 @@ export function EmojiButton({
   fallback,
   triggerClassName,
   allowRemove = true,
+  disabled = false,
 }: EmojiButtonProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -38,6 +41,14 @@ export function EmojiButton({
       document.removeEventListener("keydown", onKey);
     };
   }, [open]);
+
+  if (disabled) {
+    return (
+      <span className={triggerClassName} aria-hidden>
+        {value || fallback}
+      </span>
+    );
+  }
 
   return (
     <div ref={wrapRef} className="relative inline-block">

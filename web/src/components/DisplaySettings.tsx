@@ -1,9 +1,14 @@
 import { useEffect, useRef, useState } from "react";
-import { Check, Compass, Moon, SlidersHorizontal, Sun } from "lucide-react";
+import { Check, Compass, Download, Moon, SlidersHorizontal, Sun, Upload } from "lucide-react";
+import { downloadBackup, importBackup } from "../api/backup";
+import { ApiError } from "../api/client";
 import { setContentWidth, useContentWidth, WIDTH_LABEL, type ContentWidth } from "../lib/contentWidth";
 import { setTheme, useTheme, type Theme } from "../lib/theme";
 import { startTour } from "../lib/tour";
+import { useAuth } from "../store/auth";
 import { useBranding } from "../store/branding";
+import { useConfirm } from "../store/confirm";
+import { useToast } from "../store/toast";
 
 const WIDTHS: ContentWidth[] = ["narrow", "medium", "wide"];
 
@@ -13,8 +18,39 @@ export function DisplaySettings() {
   const theme = useTheme();
   const width = useContentWidth();
   const { themes, schemeId, setScheme } = useBranding();
+  const { canEdit } = useAuth();
+  const confirm = useConfirm();
+  const toast = useToast();
   const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // позволить повторный выбор того же файла
+    if (!file) return;
+    const ok = await confirm({
+      title: "Импортировать резервную копию?",
+      message:
+        "Текущее содержимое БД (все страницы, версии и файлы) будет ПОЛНОСТЬЮ заменено данными из файла. Действие необратимо.",
+      confirmLabel: "Заменить и импортировать",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await importBackup(file);
+      toast(`Импортировано: ${r.pages} стр., ${r.files} файлов`, "success");
+      setOpen(false);
+      setTimeout(() => (window.location.href = "/"), 600);
+    } catch (err) {
+      const msg = err instanceof ApiError ? err.message : "не удалось импортировать";
+      toast(`Ошибка импорта: ${msg}`, "error");
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     if (!open) return;
@@ -91,6 +127,38 @@ export function DisplaySettings() {
               })}
             </div>
           </Section>
+
+          {canEdit && (
+          <div className="mt-1 border-t border-line pt-2">
+            <div className="mb-1.5 px-1 font-mono text-[10px] uppercase tracking-[0.08em] text-faint">
+              Данные
+            </div>
+            <button
+              type="button"
+              onClick={() => downloadBackup()}
+              className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] text-body transition hover:bg-line/60"
+            >
+              <Download className="h-4 w-4 shrink-0 text-faint" />
+              Экспорт БД (.json)
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => fileRef.current?.click()}
+              className="flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-[13px] text-body transition hover:bg-line/60 disabled:opacity-50"
+            >
+              <Upload className="h-4 w-4 shrink-0 text-faint" />
+              {busy ? "Импорт…" : "Импорт БД (перезапись)"}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="application/json,.json"
+              className="hidden"
+              onChange={onImportFile}
+            />
+          </div>
+          )}
 
           <div className="mt-1 border-t border-line pt-2">
             <button

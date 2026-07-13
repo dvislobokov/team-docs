@@ -17,10 +17,11 @@ import {
 } from "@blocknote/react";
 import { withMultiColumn } from "@blocknote/xl-multi-column";
 import { useNavigate } from "react-router-dom";
-import { Workflow } from "lucide-react";
+import { Braces, Workflow } from "lucide-react";
 import type { PageTreeNode } from "../api/types";
 import { useTheme } from "../lib/theme";
 import { useTree } from "../store/tree";
+import { OpenApiBlock, OPENAPI_SAMPLE } from "../components/OpenApiBlock";
 
 // ─── Callout с вариантами (панели info/warning/…) ───
 type Variant = "info" | "success" | "warning" | "danger" | "note";
@@ -233,10 +234,25 @@ const mermaidSpec = createReactBlockSpec(
   { render: (props) => <MermaidBlock block={props.block} editor={props.editor} /> },
 );
 
+// ─── Блок OpenAPI (рендер спеки; см. OpenApiBlock.tsx) ───
+const openApiSpec = createReactBlockSpec(
+  {
+    type: "openapi",
+    propSchema: { source: { default: OPENAPI_SAMPLE } },
+    content: "none",
+  },
+  { render: (props) => <OpenApiBlock block={props.block} editor={props.editor} /> },
+);
+
 // ─── Схема (+ многоколоночность) ───
 export const schema = withMultiColumn(
   BlockNoteSchema.create({
-    blockSpecs: { ...defaultBlockSpecs, callout: calloutSpec(), mermaid: mermaidSpec() },
+    blockSpecs: {
+      ...defaultBlockSpecs,
+      callout: calloutSpec(),
+      mermaid: mermaidSpec(),
+      openapi: openApiSpec(),
+    },
     inlineContentSpecs: { ...defaultInlineContentSpecs, mention: mentionSpec, status: statusSpec },
   }),
 );
@@ -362,6 +378,27 @@ export function mermaidMenuItems(editor: TDEditor): DefaultReactSuggestionItem[]
     icon: <Workflow size={18} />,
     onItemClick: () => insertMermaid(editor, t.code),
   }));
+}
+
+function insertOpenApi(editor: TDEditor) {
+  const { block } = editor.getTextCursorPosition();
+  const empty = block.type === "paragraph" && (block.content?.length ?? 0) === 0;
+  const nb = { type: "openapi" as const, props: { source: OPENAPI_SAMPLE } };
+  if (empty) editor.updateBlock(block, nb);
+  else editor.insertBlocks([nb], block, "after");
+}
+
+export function openApiMenuItems(editor: TDEditor): DefaultReactSuggestionItem[] {
+  return [
+    {
+      title: "OpenAPI (Swagger)",
+      subtext: "Рендер спецификации API из URL или YAML/JSON",
+      aliases: ["openapi", "swagger", "api", "спека", "спецификация", "rest"],
+      group: "Диаграммы",
+      icon: <Braces size={18} />,
+      onItemClick: () => insertOpenApi(editor),
+    },
+  ];
 }
 
 export function mentionMenuItems(
