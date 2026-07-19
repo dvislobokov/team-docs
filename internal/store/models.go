@@ -41,6 +41,7 @@ type Page struct {
 	SearchVector interface{}        `json:"search_vector"`
 	CreatedBy    *int64             `json:"created_by"`
 	UpdatedBy    *int64             `json:"updated_by"`
+	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
 }
 
 type PageRevision struct {

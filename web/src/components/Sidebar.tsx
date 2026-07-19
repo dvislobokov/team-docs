@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronsUpDown, ClipboardPaste, PanelLeftClose, Plus, Search, Upload } from "lucide-react";
+import { ChevronsUpDown, ClipboardPaste, PanelLeftClose, Plus, Search, Trash2, Upload } from "lucide-react";
 import { createPage } from "../api/pages";
 import { useAuth } from "../store/auth";
 import { useBranding } from "../store/branding";
@@ -9,6 +9,7 @@ import { useSidebar } from "../store/sidebar";
 import { useTree } from "../store/tree";
 import { ImportMarkdown } from "./ImportMarkdown";
 import { PasteMarkdown } from "./PasteMarkdown";
+import { TrashDialog } from "./TrashDialog";
 import { TreeNav } from "./TreeNav";
 
 // Левый сайдбар: воркспейс, поиск (⌘K), дерево страниц, футер пользователя.
@@ -22,6 +23,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const [busy, setBusy] = useState(false);
+  const [trashOpen, setTrashOpen] = useState(false);
 
   // На мобильном закрываем сайдбар при переходе на другую страницу.
   useEffect(() => {
@@ -126,6 +128,21 @@ export function Sidebar() {
 
         <TreeNav />
       </nav>
+
+      {/* корзина (только для редакторов) */}
+      {user.canEdit && (
+        <div className="border-t border-line px-2 py-1.5">
+          <button
+            type="button"
+            onClick={() => setTrashOpen(true)}
+            className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-muted transition hover:bg-line/40 hover:text-ink"
+          >
+            <Trash2 className="h-4 w-4 text-faint" />
+            Корзина
+          </button>
+          <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} />
+        </div>
+      )}
 
       {/* пользователь (из /api/me) */}
       <div className="flex items-center gap-2.5 border-t border-line px-4 py-3">

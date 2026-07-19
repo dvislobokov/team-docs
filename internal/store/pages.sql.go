@@ -17,6 +17,7 @@ SELECT COUNT(*)
 FROM pages
 WHERE parent_id IS NOT DISTINCT FROM $1
   AND id <> $2
+  AND deleted_at IS NULL
 `
 
 type CountSiblingsParams struct {
@@ -38,7 +39,8 @@ func (q *Queries) CountSiblings(ctx context.Context, arg CountSiblingsParams) (i
 const createPage = `-- name: CreatePage :one
 INSERT INTO pages (parent_id, title, position, created_by, updated_by)
 VALUES ($1, $2, COALESCE(
-    (SELECT MAX(position) + 1 FROM pages WHERE parent_id IS NOT DISTINCT FROM $1),
+    (SELECT MAX(position) + 1 FROM pages
+     WHERE parent_id IS NOT DISTINCT FROM $1 AND deleted_at IS NULL),
     0
 ), $3, $3)
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at
@@ -79,22 +81,13 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 	return i, err
 }
 
-const deletePage = `-- name: DeletePage :exec
-DELETE FROM pages WHERE id = $1
-`
-
-func (q *Queries) DeletePage(ctx context.Context, id int64) error {
-	_, err := q.db.Exec(ctx, deletePage, id)
-	return err
-}
-
 const getPage = `-- name: GetPage :one
 SELECT p.id, p.parent_id, p.title, p.icon, p.content, p.position, p.version,
        p.created_at, p.updated_at,
        u.name AS updated_by_name
 FROM pages p
 LEFT JOIN users u ON u.id = p.updated_by
-WHERE p.id = $1
+WHERE p.id = $1 AND p.deleted_at IS NULL
 `
 
 type GetPageRow struct {
@@ -131,7 +124,7 @@ func (q *Queries) GetPage(ctx context.Context, id int64) (GetPageRow, error) {
 const getPageMeta = `-- name: GetPageMeta :one
 SELECT id, parent_id, position
 FROM pages
-WHERE id = $1
+WHERE id = $1 AND deleted_at IS NULL
 `
 
 type GetPageMetaRow struct {
@@ -140,7 +133,7 @@ type GetPageMetaRow struct {
 	Position int32  `json:"position"`
 }
 
-// Лёгкое чтение для move: родитель и позиция без контента.
+// Лёгкое чтение для move/проверок: родитель и позиция без контента.
 func (q *Queries) GetPageMeta(ctx context.Context, id int64) (GetPageMetaRow, error) {
 	row := q.db.QueryRow(ctx, getPageMeta, id)
 	var i GetPageMetaRow
@@ -151,6 +144,7 @@ func (q *Queries) GetPageMeta(ctx context.Context, id int64) (GetPageMetaRow, er
 const getPageTree = `-- name: GetPageTree :many
 SELECT id, parent_id, title, icon, position
 FROM pages
+WHERE deleted_at IS NULL
 ORDER BY parent_id NULLS FIRST, position, id
 `
 
@@ -162,7 +156,7 @@ type GetPageTreeRow struct {
 	Position int32  `json:"position"`
 }
 
-// Плоский список для построения дерева в сайдбаре.
+// Плоский список для построения дерева в сайдбаре (без корзины).
 func (q *Queries) GetPageTree(ctx context.Context) ([]GetPageTreeRow, error) {
 	rows, err := q.db.Query(ctx, getPageTree)
 	if err != nil {
@@ -301,6 +295,51 @@ func (q *Queries) ListRevisions(ctx context.Context, pageID int64) ([]ListRevisi
 	return items, nil
 }
 
+const listTrash = `-- name: ListTrash :many
+
+SELECT p.id, p.title, p.icon, p.deleted_at
+FROM pages p
+LEFT JOIN pages par ON par.id = p.parent_id
+WHERE p.deleted_at IS NOT NULL
+  AND (p.parent_id IS NULL OR par.deleted_at IS NULL)
+ORDER BY p.deleted_at DESC
+`
+
+type ListTrashRow struct {
+	ID        int64              `json:"id"`
+	Title     string             `json:"title"`
+	Icon      string             `json:"icon"`
+	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+}
+
+// Мягкое удаление и восстановление поддерева — сырой SQL с рекурсивным CTE
+// в internal/pages/trash.go (анализатор sqlc не понимает рекурсию).
+// Содержимое корзины: корни удалённых поддеревьев (родитель жив или отсутствует).
+func (q *Queries) ListTrash(ctx context.Context) ([]ListTrashRow, error) {
+	rows, err := q.db.Query(ctx, listTrash)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTrashRow{}
+	for rows.Next() {
+		var i ListTrashRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Icon,
+			&i.DeletedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const movePage = `-- name: MovePage :exec
 UPDATE pages
 SET parent_id  = $2,
@@ -318,6 +357,32 @@ type MovePageParams struct {
 func (q *Queries) MovePage(ctx context.Context, arg MovePageParams) error {
 	_, err := q.db.Exec(ctx, movePage, arg.ID, arg.ParentID, arg.Position)
 	return err
+}
+
+const purgeExpired = `-- name: PurgeExpired :execrows
+DELETE FROM pages WHERE deleted_at IS NOT NULL AND deleted_at < $1
+`
+
+// Автоочистка корзины: всё, что удалено раньше отсечки.
+func (q *Queries) PurgeExpired(ctx context.Context, deletedAt pgtype.Timestamptz) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeExpired, deletedAt)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const purgePage = `-- name: PurgePage :execrows
+DELETE FROM pages WHERE id = $1 AND deleted_at IS NOT NULL
+`
+
+// Окончательное удаление из корзины (FK-каскад добивает поддерево).
+func (q *Queries) PurgePage(ctx context.Context, id int64) (int64, error) {
+	result, err := q.db.Exec(ctx, purgePage, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const searchPages = `-- name: SearchPages :many
@@ -371,6 +436,7 @@ SET position = position - 1
 WHERE parent_id IS NOT DISTINCT FROM $1
   AND position > $2
   AND id <> $3
+  AND deleted_at IS NULL
 `
 
 type ShiftAfterRemoveParams struct {
@@ -391,6 +457,7 @@ SET position = position + 1
 WHERE parent_id IS NOT DISTINCT FROM $1
   AND position >= $2
   AND id <> $3
+  AND deleted_at IS NULL
 `
 
 type ShiftForInsertParams struct {
@@ -416,6 +483,7 @@ SET title        = $2,
     updated_at   = now()
 WHERE id = $1
   AND version = $5
+  AND deleted_at IS NULL
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at
 `
 

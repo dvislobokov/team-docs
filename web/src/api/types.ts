@@ -66,6 +66,14 @@ export interface SearchHit {
   snippet: string; // HTML-фрагмент ts_headline
 }
 
+/** Элемент корзины (корень удалённого поддерева). */
+export interface TrashItem {
+  id: number;
+  title: string;
+  icon: string;
+  deletedAt: string;
+}
+
 export interface UploadResponse {
   id: string; // UUID
   url: string; // /api/files/<uuid>

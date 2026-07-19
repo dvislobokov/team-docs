@@ -154,14 +154,14 @@ export function PageScreen() {
     if (!page) return;
     const ok = await confirm({
       title: "Удалить страницу?",
-      message: `«${page.title || "Без названия"}» и все вложенные страницы будут удалены безвозвратно.`,
+      message: `«${page.title || "Без названия"}» и все вложенные страницы отправятся в корзину (хранится 30 дней).`,
       confirmLabel: "Удалить",
       danger: true,
     });
     if (!ok) return;
     await deletePage(page.id);
     await reload();
-    toast("Страница удалена", "success");
+    toast("Страница перемещена в корзину", "success");
     navigate("/", { replace: true });
   };
 

@@ -90,7 +90,7 @@ func (h *handlers) register(s *server.MCPServer) {
 		h.movePage)
 
 	s.AddTool(mcp.NewTool("delete_page",
-		mcp.WithDescription("Удалить страницу и всё её поддерево."),
+		mcp.WithDescription("Удалить страницу и всё её поддерево (в корзину; восстановимо через UI)."),
 		mcp.WithNumber("id", mcp.Required(), mcp.Description("ID страницы"))),
 		h.deletePage)
 
@@ -298,7 +298,9 @@ func (h *handlers) deletePage(ctx context.Context, r mcp.CallToolRequest) (*mcp.
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if err := h.q.DeletePage(ctx, int64(id)); err != nil {
+	if err := pages.SoftDelete(ctx, h.pool, int64(id)); errors.Is(err, pages.ErrPageNotFound) {
+		return mcp.NewToolResultError(err.Error()), nil
+	} else if err != nil {
 		return h.fail("delete_page", err)
 	}
 	return jsonResult(map[string]any{"status": "deleted", "id": id})

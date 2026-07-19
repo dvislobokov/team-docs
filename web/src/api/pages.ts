@@ -8,6 +8,7 @@ import type {
   Revision,
   RevisionDetail,
   SearchHit,
+  TrashItem,
   UpdatePageRequest,
   UploadResponse,
 } from "./types";
@@ -33,8 +34,22 @@ export function movePage(id: number, body: MovePageRequest): Promise<void> {
   return request<void>(`/pages/${id}/move`, { method: "PATCH", body });
 }
 
+/** Мягкое удаление: страница с поддеревом уходит в корзину. */
 export function deletePage(id: number): Promise<void> {
   return request<void>(`/pages/${id}`, { method: "DELETE" });
+}
+
+export function getTrash(signal?: AbortSignal): Promise<TrashItem[]> {
+  return request<TrashItem[]>("/trash", { signal });
+}
+
+export function restorePage(id: number): Promise<void> {
+  return request<void>(`/pages/${id}/restore`, { method: "POST" });
+}
+
+/** Окончательное удаление из корзины (безвозвратно). */
+export function purgePage(id: number): Promise<void> {
+  return request<void>(`/pages/${id}/purge`, { method: "DELETE" });
 }
 
 export function getRevisions(id: number, signal?: AbortSignal): Promise<Revision[]> {

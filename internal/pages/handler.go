@@ -46,6 +46,9 @@ func (h *Handler) Register(api *echo.Group) {
 	api.GET("/pages/:id/revisions/:revId", h.revision)
 	api.GET("/pages/:id/markdown", h.exportMarkdown)
 	api.GET("/search", h.search)
+	api.GET("/trash", h.trash_)
+	api.POST("/pages/:id/restore", h.restore)
+	api.DELETE("/pages/:id/purge", h.purge)
 }
 
 // --- DTO ---
@@ -108,6 +111,15 @@ func (h *Handler) create(c echo.Context) error {
 	}
 	if req.Title == "" {
 		req.Title = "Untitled"
+	}
+	// Родитель должен существовать и не лежать в корзине.
+	if req.ParentID != nil {
+		if _, err := h.q.GetPageMeta(c.Request().Context(), *req.ParentID); err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return echo.NewHTTPError(http.StatusBadRequest, "parent page not found")
+			}
+			return h.fail(c, err, "create page: check parent")
+		}
 	}
 	row, err := h.q.CreatePage(c.Request().Context(), store.CreatePageParams{
 		ParentID: req.ParentID,
@@ -251,13 +263,65 @@ func (h *Handler) move(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// delete — мягкое удаление: страница с поддеревом уходит в корзину.
 func (h *Handler) delete(c echo.Context) error {
 	id, err := pathID(c)
 	if err != nil {
 		return err
 	}
-	if err := h.q.DeletePage(c.Request().Context(), id); err != nil {
+	switch err := SoftDelete(c.Request().Context(), h.pool, id); {
+	case errors.Is(err, ErrPageNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, "page not found")
+	case err != nil:
 		return h.fail(c, err, "delete page")
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+// trash_ отдаёт содержимое корзины (корни удалённых поддеревьев).
+func (h *Handler) trash_(c echo.Context) error {
+	rows, err := h.q.ListTrash(c.Request().Context())
+	if err != nil {
+		return h.fail(c, err, "list trash")
+	}
+	type item struct {
+		ID        int64     `json:"id"`
+		Title     string    `json:"title"`
+		Icon      string    `json:"icon"`
+		DeletedAt time.Time `json:"deletedAt"`
+	}
+	out := make([]item, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, item{ID: r.ID, Title: r.Title, Icon: r.Icon, DeletedAt: r.DeletedAt.Time})
+	}
+	return c.JSON(http.StatusOK, out)
+}
+
+func (h *Handler) restore(c echo.Context) error {
+	id, err := pathID(c)
+	if err != nil {
+		return err
+	}
+	switch err := Restore(c.Request().Context(), h.pool, id); {
+	case errors.Is(err, ErrPageNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, "page not found in trash")
+	case err != nil:
+		return h.fail(c, err, "restore page")
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (h *Handler) purge(c echo.Context) error {
+	id, err := pathID(c)
+	if err != nil {
+		return err
+	}
+	n, err := h.q.PurgePage(c.Request().Context(), id)
+	if err != nil {
+		return h.fail(c, err, "purge page")
+	}
+	if n == 0 {
+		return echo.NewHTTPError(http.StatusNotFound, "page not found in trash")
 	}
 	return c.NoContent(http.StatusNoContent)
 }
