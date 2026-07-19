@@ -75,6 +75,9 @@ func main() {
 	api.Use(auth.Middleware(authenticator, registry, log))
 	api.Use(auth.RequireEditor(authenticator, log))
 	auth.NewHandler(authenticator).Register(api)
+	// Админка: управление пользователями и ролями (только для role=admin).
+	auth.NewAdminHandler(pool, registry).
+		Register(api.Group("/admin", auth.RequireAdmin(authenticator, log)))
 	pages.NewHandler(pool, log).Register(api)
 	uploads.NewHandler(pool, log, cfg.MaxUploadBytes).Register(api)
 	backup.NewHandler(pool, log, registry.Reset).Register(api, auth.RequireEditorStrict(authenticator, log))

@@ -7,6 +7,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -89,6 +90,7 @@ func oauthApp(t *testing.T, cfg config.AuthSettings, subject, email string) (*ec
 	NewHandler(a).Register(api)
 	admin := e.Group("/api/admin", Middleware(a, reg, log), RequireAdmin(a, log))
 	admin.GET("/ping", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
+	NewAdminHandler(pool, reg).Register(admin)
 	return e, a
 }
 
@@ -202,5 +204,48 @@ func TestOAuthAdminBootstrap(t *testing.T) {
 	e.ServeHTTP(rec, req)
 	if rec.Code != http.StatusNoContent {
 		t.Fatalf("бутстрап-админ должен проходить в /api/admin: code=%d", rec.Code)
+	}
+
+	// Список пользователей доступен; находим себя и понижаем до reader.
+	req = httptest.NewRequest(http.MethodGet, "/api/admin/users", nil)
+	req.AddCookie(session)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("admin users: code=%d", rec.Code)
+	}
+	var users []map[string]any
+	_ = json.Unmarshal(rec.Body.Bytes(), &users)
+	var selfID float64
+	for _, u := range users {
+		if u["subject"] == "fake:boss" {
+			selfID = u["id"].(float64)
+		}
+	}
+	if selfID == 0 {
+		t.Fatal("boss не найден в списке пользователей")
+	}
+
+	// Смена роли: невалидная → 400, валидная → 204 и применяется сразу
+	// (кэш Registry сбрасывается) — но boss в adminEmails, бутстрап вернёт
+	// admin при следующем входе; проверяем на самой записи в списке.
+	body := strings.NewReader(`{"role":"owner"}`)
+	req = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/admin/users/%.0f/role", selfID), body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(session)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("невалидная роль: code=%d, ожидался 400", rec.Code)
+	}
+
+	body = strings.NewReader(`{"role":"editor"}`)
+	req = httptest.NewRequest(http.MethodPut, fmt.Sprintf("/api/admin/users/%.0f/role", selfID), body)
+	req.Header.Set("Content-Type", "application/json")
+	req.AddCookie(session)
+	rec = httptest.NewRecorder()
+	e.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNoContent {
+		t.Fatalf("смена роли: code=%d", rec.Code)
 	}
 }

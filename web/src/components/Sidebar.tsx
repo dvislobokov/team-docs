@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Settings, Trash2, Upload } from "lucide-react";
 import { createPage } from "../api/pages";
 import { useAuth } from "../store/auth";
 import { useBranding } from "../store/branding";
@@ -129,7 +129,7 @@ export function Sidebar() {
         <TreeNav />
       </nav>
 
-      {/* корзина (только для редакторов) */}
+      {/* корзина (редакторам) и админка (админам) */}
       {user.canEdit && (
         <div className="border-t border-line px-2 py-1.5">
           <button
@@ -140,6 +140,16 @@ export function Sidebar() {
             <Trash2 className="h-4 w-4 text-faint" />
             Корзина
           </button>
+          {user.isAdmin && (
+            <button
+              type="button"
+              onClick={() => navigate("/admin")}
+              className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left text-[13px] text-muted transition hover:bg-line/40 hover:text-ink"
+            >
+              <Settings className="h-4 w-4 text-faint" />
+              Администрирование
+            </button>
+          )}
           <TrashDialog open={trashOpen} onOpenChange={setTrashOpen} />
         </div>
       )}

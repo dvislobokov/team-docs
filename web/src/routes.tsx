@@ -1,5 +1,6 @@
 import { createBrowserRouter } from "react-router-dom";
 import { App } from "./App";
+import { AdminScreen } from "./components/AdminScreen";
 import { HomeScreen } from "./components/HomeScreen";
 import { PageScreen } from "./components/PageScreen";
 
@@ -11,6 +12,7 @@ export const router = createBrowserRouter([
     children: [
       { index: true, element: <HomeScreen /> },
       { path: "pages/:id", element: <PageScreen /> },
+      { path: "admin", element: <AdminScreen /> },
     ],
   },
 ]);
