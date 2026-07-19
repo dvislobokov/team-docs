@@ -20,6 +20,7 @@ export interface Page {
   updatedByName: string | null;
   /** Право правки текущего пользователя в проекте страницы (§10). */
   canEdit: boolean;
+  tags: string[];
 }
 
 /** Узел плоского списка дерева (GET /api/pages/tree). */
@@ -43,6 +44,8 @@ export interface UpdatePageRequest {
   icon: string;
   content: PageContent;
   version: number;
+  /** Полный список тегов (замена); null/отсутствие — не менять. */
+  tags?: string[];
 }
 
 export interface MovePageRequest {

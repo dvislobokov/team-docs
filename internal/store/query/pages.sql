@@ -7,7 +7,7 @@ ORDER BY parent_id NULLS FIRST, position, id;
 
 -- name: GetPage :one
 SELECT p.id, p.parent_id, p.title, p.icon, p.content, p.position, p.version,
-       p.created_at, p.updated_at,
+       p.tags, p.created_at, p.updated_at,
        u.name AS updated_by_name
 FROM pages p
 LEFT JOIN users u ON u.id = p.updated_by
@@ -31,12 +31,14 @@ SET title        = $2,
     content_text = $4,
     icon         = $6,
     updated_by   = sqlc.narg(author_id),
+    -- nil → не трогать теги (MCP-запись); пустой массив — очистить.
+    tags         = COALESCE(sqlc.narg(tags)::text[], tags),
     version      = version + 1,
     updated_at   = now()
 WHERE id = $1
   AND version = $5
   AND deleted_at IS NULL
-RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at;
+RETURNING id, parent_id, title, icon, content, position, version, tags, created_at, updated_at;
 
 -- name: GetPageMeta :one
 -- Лёгкое чтение для move/проверок: родитель и позиция без контента.
@@ -110,6 +112,7 @@ FROM pages
 WHERE search_vector @@ plainto_tsquery('russian', $1)
   AND deleted_at IS NULL
   AND project_id = ANY(sqlc.arg(project_ids)::bigint[])
+  AND (sqlc.narg(tag)::text IS NULL OR tags @> ARRAY[sqlc.narg(tag)::text])
 ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
 LIMIT 50;
 
@@ -130,6 +133,15 @@ LIMIT 100;
 SELECT id, page_id, version, title, content, created_at
 FROM page_revisions
 WHERE id = $1;
+
+-- name: ListTags :many
+-- Теги проекта с числом живых страниц (для фильтра/автодополнения).
+SELECT t.tag::text AS tag, COUNT(*) AS pages
+FROM pages p
+CROSS JOIN unnest(p.tags) AS t(tag)
+WHERE p.deleted_at IS NULL AND p.project_id = $1
+GROUP BY t.tag
+ORDER BY COUNT(*) DESC, t.tag;
 
 -- name: LatestRevisionAt :one
 SELECT MAX(created_at)::timestamptz AS last_at

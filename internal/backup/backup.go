@@ -69,11 +69,12 @@ type PageRow struct {
 	Icon        string          `json:"icon"`
 	CreatedAt   time.Time       `json:"createdAt"`
 	UpdatedAt   time.Time       `json:"updatedAt"`
-	// v2: проект, авторство, корзина. В v1-дампах отсутствуют.
+	// v2: проект, авторство, корзина, теги. В v1-дампах отсутствуют.
 	ProjectID int64      `json:"projectId,omitempty"`
 	CreatedBy *int64     `json:"createdBy,omitempty"`
 	UpdatedBy *int64     `json:"updatedBy,omitempty"`
 	DeletedAt *time.Time `json:"deletedAt,omitempty"`
+	Tags      []string   `json:"tags,omitempty"`
 }
 
 type RevisionRow struct {
@@ -167,14 +168,14 @@ func (s *Service) Export(ctx context.Context) (*Dump, error) {
 
 	if err := s.eachRow(ctx,
 		`SELECT id, parent_id, title, content, content_text, position, version, icon,
-		        created_at, updated_at, project_id, created_by, updated_by, deleted_at
+		        created_at, updated_at, project_id, created_by, updated_by, deleted_at, tags
 		 FROM pages ORDER BY id`,
 		func(rows pgx.Rows) error {
 			var p PageRow
 			var content []byte
 			if err := rows.Scan(&p.ID, &p.ParentID, &p.Title, &content, &p.ContentText,
 				&p.Position, &p.Version, &p.Icon, &p.CreatedAt, &p.UpdatedAt,
-				&p.ProjectID, &p.CreatedBy, &p.UpdatedBy, &p.DeletedAt); err != nil {
+				&p.ProjectID, &p.CreatedBy, &p.UpdatedBy, &p.DeletedAt, &p.Tags); err != nil {
 				return err
 			}
 			p.Content = json.RawMessage(content)
@@ -325,12 +326,16 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 		if projectID == 0 {
 			projectID = defaultProject
 		}
+		tags := p.Tags
+		if tags == nil {
+			tags = []string{}
+		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO pages (id, parent_id, title, content, content_text, position, version, icon,
-			                    created_at, updated_at, project_id, created_by, updated_by, deleted_at)
-			 OVERRIDING SYSTEM VALUE VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+			                    created_at, updated_at, project_id, created_by, updated_by, deleted_at, tags)
+			 OVERRIDING SYSTEM VALUE VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
 			p.ID, p.Title, []byte(content), p.ContentText, p.Position, p.Version, p.Icon,
-			p.CreatedAt, p.UpdatedAt, projectID, p.CreatedBy, p.UpdatedBy, p.DeletedAt,
+			p.CreatedAt, p.UpdatedAt, projectID, p.CreatedBy, p.UpdatedBy, p.DeletedAt, tags,
 		); err != nil {
 			return fmt.Errorf("вставка страницы %d: %w", p.ID, err)
 		}

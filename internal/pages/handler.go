@@ -87,6 +87,7 @@ func (h *Handler) Register(api *echo.Group) {
 	api.GET("/pages/:id/revisions/:revId", h.revision)
 	api.GET("/pages/:id/markdown", h.exportMarkdown)
 	api.GET("/search", h.search)
+	api.GET("/tags", h.tags)
 	api.GET("/trash", h.trash_)
 	api.POST("/pages/:id/restore", h.restore)
 	api.DELETE("/pages/:id/purge", h.purge)
@@ -107,7 +108,8 @@ type pageResponse struct {
 	UpdatedByName *string `json:"updatedByName"`
 	// CanEdit — вправе ли текущий пользователь редактировать страницу
 	// (роль в проекте, §10); UI прячет кнопки правки для читателей.
-	CanEdit bool `json:"canEdit"`
+	CanEdit bool     `json:"canEdit"`
+	Tags    []string `json:"tags"`
 }
 
 type createRequest struct {
@@ -123,6 +125,8 @@ type updateRequest struct {
 	Icon    string          `json:"icon"`
 	Content json.RawMessage `json:"content"`
 	Version int32           `json:"version"`
+	// Tags: null — не трогать (клиенты без поддержки тегов), [] — очистить.
+	Tags []string `json:"tags"`
 }
 
 type moveRequest struct {
@@ -236,6 +240,8 @@ func (h *Handler) create(c echo.Context) error {
 		return h.fail(c, err, "create page")
 	}
 	return c.JSON(http.StatusCreated, pageResponse{
+		Tags:      []string{},
+		CanEdit:   true,
 		ID:        row.ID,
 		ParentID:  row.ParentID,
 		Title:     row.Title,
@@ -277,6 +283,7 @@ func (h *Handler) get(c echo.Context) error {
 		UpdatedAt:     row.UpdatedAt.Time,
 		UpdatedByName: row.UpdatedByName,
 		CanEdit:       projects.CanWrite(role),
+		Tags:          row.Tags,
 	})
 }
 
@@ -305,6 +312,7 @@ func (h *Handler) update(c echo.Context) error {
 		Version:     req.Version,
 		Icon:        req.Icon,
 		AuthorID:    auth.UserID(c),
+		Tags:        normalizeTags(req.Tags),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Либо страница не существует, либо конфликт версий.
@@ -335,6 +343,7 @@ func (h *Handler) update(c echo.Context) error {
 		UpdatedAt:     row.UpdatedAt.Time,
 		UpdatedByName: updatedBy,
 		CanEdit:       true, // guardWrite уже пройден
+		Tags:          row.Tags,
 	})
 }
 
@@ -411,6 +420,75 @@ func (h *Handler) delete(c echo.Context) error {
 		return h.fail(c, err, "delete page")
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+// normalizeTags: null остаётся null (не трогать), иначе — trim, отбрасывание
+// пустых, дедупликация, максимум 20 тегов по 40 символов.
+func normalizeTags(in []string) []string {
+	if in == nil {
+		return nil
+	}
+	seen := map[string]bool{}
+	out := []string{}
+	for _, t := range in {
+		t = strings.TrimSpace(t)
+		if t == "" || seen[t] {
+			continue
+		}
+		if len([]rune(t)) > 40 {
+			t = string([]rune(t)[:40])
+		}
+		seen[t] = true
+		out = append(out, t)
+		if len(out) == 20 {
+			break
+		}
+	}
+	return out
+}
+
+// tags отдаёт теги проекта с числом страниц (?project=<id>; по умолчанию main).
+func (h *Handler) tags(c echo.Context) error {
+	ctx := c.Request().Context()
+	var project store.Project
+	var err error
+	if raw := c.QueryParam("project"); raw != "" {
+		id, perr := strconv.ParseInt(raw, 10, 64)
+		if perr != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid project")
+		}
+		project, err = h.q.GetProject(ctx, id)
+	} else {
+		project, err = h.q.GetProjectByKey(ctx, "main")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "get project")
+	}
+	u, _ := auth.FromContext(c)
+	role, err := projects.RoleFor(ctx, h.q, h.a, u, project)
+	if err != nil {
+		return h.fail(c, err, "resolve project role")
+	}
+	if !projects.CanRead(role) {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
+	}
+
+	rows, err := h.q.ListTags(ctx, project.ID)
+	if err != nil {
+		return h.fail(c, err, "list tags")
+	}
+	type tag struct {
+		Tag   string `json:"tag"`
+		Pages int64  `json:"pages"`
+	}
+	out := make([]tag, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, tag{Tag: r.Tag, Pages: r.Pages})
+	}
+	return c.JSON(http.StatusOK, out)
 }
 
 // trash_ отдаёт содержимое корзины (корни удалённых поддеревьев) — только из
@@ -588,9 +666,14 @@ func (h *Handler) search(c echo.Context) error {
 	if len(ids) == 0 {
 		return c.JSON(http.StatusOK, []any{})
 	}
+	var tagFilter *string
+	if t := c.QueryParam("tag"); t != "" {
+		tagFilter = &t
+	}
 	rows, err := h.q.SearchPages(ctx, store.SearchPagesParams{
 		PlaintoTsquery: q,
 		ProjectIds:     ids,
+		Tag:            tagFilter,
 	})
 	if err != nil {
 		return h.fail(c, err, "search pages")

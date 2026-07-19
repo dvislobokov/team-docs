@@ -19,6 +19,7 @@ import { useTree } from "../store/tree";
 import { ChildCards } from "./ChildCards";
 import { EmojiButton } from "./EmojiButton";
 import { PageEditor } from "./PageEditor";
+import { PageTags } from "./PageTags";
 import { RevisionsDialog } from "./RevisionsDialog";
 import { RightRail } from "./RightRail";
 import { ShareButton } from "./ShareButton";
@@ -54,6 +55,7 @@ export function PageScreen() {
   const pageRef = useRef<Page | null>(null);
   const titleRef = useRef("");
   const iconRef = useRef("");
+  const tagsRef = useRef<string[]>([]);
   const contentRef = useRef<PartialBlock[]>([]);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleInputRef = useRef<HTMLInputElement>(null);
@@ -77,6 +79,7 @@ export function PageScreen() {
         pageRef.current = p;
         titleRef.current = p.title;
         iconRef.current = p.icon;
+        tagsRef.current = p.tags ?? [];
         contentRef.current = p.content;
         pushRecent(p.id);
         // Новая страница (создана только что) — сразу в режим правки, фокус на
@@ -109,6 +112,7 @@ export function PageScreen() {
         icon: iconRef.current,
         content: contentRef.current,
         version: p.version,
+        tags: tagsRef.current,
       });
       pageRef.current = updated;
       setPage(updated);
@@ -143,6 +147,13 @@ export function PageScreen() {
     scheduleSave();
   };
 
+  // Теги сохраняются сразу (дискретное действие, не дебаунсим).
+  const onTagsChange = (tags: string[]) => {
+    tagsRef.current = tags;
+    setPage((p) => (p ? { ...p, tags } : p));
+    void doSave();
+  };
+
   // Смена иконки сохраняется сразу (дискретное действие, не дебаунсим).
   const onIconChange = (emoji: string) => {
     iconRef.current = emoji;
@@ -171,6 +182,7 @@ export function PageScreen() {
     pageRef.current = p;
     titleRef.current = p.title;
     iconRef.current = p.icon;
+    tagsRef.current = p.tags ?? [];
     contentRef.current = p.content;
     setEditorEpoch((e) => e + 1); // форсируем перечитку контента редактором
   };
@@ -325,6 +337,8 @@ export function PageScreen() {
             {readingLabel(readingMinutes(page.content))}
             {editing && <SaveIndicator state={saveState} />}
           </p>
+
+          <PageTags tags={page.tags ?? []} editable={pageEditable} onChange={onTagsChange} />
 
           {/* Пустая страница-контейнер: вместо пустого редактора — карточки
               дочерних страниц. Иначе — редактор, а карточки (если дети есть)

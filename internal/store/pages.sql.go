@@ -89,7 +89,7 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 
 const getPage = `-- name: GetPage :one
 SELECT p.id, p.parent_id, p.title, p.icon, p.content, p.position, p.version,
-       p.created_at, p.updated_at,
+       p.tags, p.created_at, p.updated_at,
        u.name AS updated_by_name
 FROM pages p
 LEFT JOIN users u ON u.id = p.updated_by
@@ -104,6 +104,7 @@ type GetPageRow struct {
 	Content       []byte             `json:"content"`
 	Position      int32              `json:"position"`
 	Version       int32              `json:"version"`
+	Tags          []string           `json:"tags"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 	UpdatedByName *string            `json:"updated_by_name"`
@@ -120,6 +121,7 @@ func (q *Queries) GetPage(ctx context.Context, id int64) (GetPageRow, error) {
 		&i.Content,
 		&i.Position,
 		&i.Version,
+		&i.Tags,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UpdatedByName,
@@ -301,6 +303,41 @@ func (q *Queries) ListRevisions(ctx context.Context, pageID int64) ([]ListRevisi
 	return items, nil
 }
 
+const listTags = `-- name: ListTags :many
+SELECT t.tag::text AS tag, COUNT(*) AS pages
+FROM pages p
+CROSS JOIN unnest(p.tags) AS t(tag)
+WHERE p.deleted_at IS NULL AND p.project_id = $1
+GROUP BY t.tag
+ORDER BY COUNT(*) DESC, t.tag
+`
+
+type ListTagsRow struct {
+	Tag   string `json:"tag"`
+	Pages int64  `json:"pages"`
+}
+
+// Теги проекта с числом живых страниц (для фильтра/автодополнения).
+func (q *Queries) ListTags(ctx context.Context, projectID int64) ([]ListTagsRow, error) {
+	rows, err := q.db.Query(ctx, listTags, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTagsRow{}
+	for rows.Next() {
+		var i ListTagsRow
+		if err := rows.Scan(&i.Tag, &i.Pages); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listTrash = `-- name: ListTrash :many
 
 SELECT p.id, p.title, p.icon, p.deleted_at, p.project_id
@@ -401,6 +438,7 @@ FROM pages
 WHERE search_vector @@ plainto_tsquery('russian', $1)
   AND deleted_at IS NULL
   AND project_id = ANY($2::bigint[])
+  AND ($3::text IS NULL OR tags @> ARRAY[$3::text])
 ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
 LIMIT 50
 `
@@ -408,6 +446,7 @@ LIMIT 50
 type SearchPagesParams struct {
 	PlaintoTsquery string  `json:"plainto_tsquery"`
 	ProjectIds     []int64 `json:"project_ids"`
+	Tag            *string `json:"tag"`
 }
 
 type SearchPagesRow struct {
@@ -420,7 +459,7 @@ type SearchPagesRow struct {
 
 // Поиск по генерируемой колонке search_vector (русская морфология, GIN-индекс).
 func (q *Queries) SearchPages(ctx context.Context, arg SearchPagesParams) ([]SearchPagesRow, error) {
-	rows, err := q.db.Query(ctx, searchPages, arg.PlaintoTsquery, arg.ProjectIds)
+	rows, err := q.db.Query(ctx, searchPages, arg.PlaintoTsquery, arg.ProjectIds, arg.Tag)
 	if err != nil {
 		return nil, err
 	}
@@ -494,22 +533,25 @@ SET title        = $2,
     content_text = $4,
     icon         = $6,
     updated_by   = $7,
+    -- nil → не трогать теги (MCP-запись); пустой массив — очистить.
+    tags         = COALESCE($8::text[], tags),
     version      = version + 1,
     updated_at   = now()
 WHERE id = $1
   AND version = $5
   AND deleted_at IS NULL
-RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at
+RETURNING id, parent_id, title, icon, content, position, version, tags, created_at, updated_at
 `
 
 type UpdatePageParams struct {
-	ID          int64  `json:"id"`
-	Title       string `json:"title"`
-	Content     []byte `json:"content"`
-	ContentText string `json:"content_text"`
-	Version     int32  `json:"version"`
-	Icon        string `json:"icon"`
-	AuthorID    *int64 `json:"author_id"`
+	ID          int64    `json:"id"`
+	Title       string   `json:"title"`
+	Content     []byte   `json:"content"`
+	ContentText string   `json:"content_text"`
+	Version     int32    `json:"version"`
+	Icon        string   `json:"icon"`
+	AuthorID    *int64   `json:"author_id"`
+	Tags        []string `json:"tags"`
 }
 
 type UpdatePageRow struct {
@@ -520,6 +562,7 @@ type UpdatePageRow struct {
 	Content   []byte             `json:"content"`
 	Position  int32              `json:"position"`
 	Version   int32              `json:"version"`
+	Tags      []string           `json:"tags"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
@@ -535,6 +578,7 @@ func (q *Queries) UpdatePage(ctx context.Context, arg UpdatePageParams) (UpdateP
 		arg.Version,
 		arg.Icon,
 		arg.AuthorID,
+		arg.Tags,
 	)
 	var i UpdatePageRow
 	err := row.Scan(
@@ -545,6 +589,7 @@ func (q *Queries) UpdatePage(ctx context.Context, arg UpdatePageParams) (UpdateP
 		&i.Content,
 		&i.Position,
 		&i.Version,
+		&i.Tags,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

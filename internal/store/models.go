@@ -54,6 +54,7 @@ type Page struct {
 	UpdatedBy    *int64             `json:"updated_by"`
 	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
 	ProjectID    int64              `json:"project_id"`
+	Tags         []string           `json:"tags"`
 }
 
 type PageRevision struct {
