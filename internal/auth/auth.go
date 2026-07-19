@@ -37,6 +37,9 @@ func New(cfg config.AuthSettings) (*Authenticator, error) {
 // Enabled сообщает, включена ли проверка авторизации.
 func (a *Authenticator) Enabled() bool { return a.cfg.Enabled }
 
+// Config отдаёт конфигурацию (диагностика в админке).
+func (a *Authenticator) Config() config.AuthSettings { return a.cfg }
+
 // PublicRead — разрешено ли анонимное чтение (GET) при включённой авторизации.
 func (a *Authenticator) PublicRead() bool { return a.cfg.PublicRead }
 

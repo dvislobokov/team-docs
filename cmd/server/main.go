@@ -86,8 +86,9 @@ func main() {
 	auth.NewHandler(authenticator).Register(api)
 	// Админка: пользователи/роли и настройки (только для role=admin).
 	adminGroup := api.Group("/admin", auth.RequireAdmin(authenticator, log))
-	auth.NewAdminHandler(pool, registry).Register(adminGroup)
+	auth.NewAdminHandler(pool, registry, authenticator).Register(adminGroup)
 	settings.NewHandler(settingsSvc).Register(adminGroup)
+	pages.RegisterMaintenance(adminGroup, pool, log)
 	pages.NewHandler(pool, authenticator, log).Register(api)
 	projects.NewHandler(pool, authenticator, log).Register(api)
 	uploads.NewHandler(pool, authenticator, log, settingsSvc.MaxUploadBytes).Register(api)

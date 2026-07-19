@@ -54,3 +54,21 @@ export function setMember(id: number, userId: number, role: string): Promise<voi
 export function removeMember(id: number, userId: number): Promise<void> {
   return request<void>(`/projects/${id}/members/${userId}`, { method: "DELETE" });
 }
+
+export interface ProjectGroup {
+  groupId: number;
+  role: string;
+  name: string;
+}
+
+export function listProjectGroups(id: number): Promise<ProjectGroup[]> {
+  return request<ProjectGroup[]>(`/projects/${id}/groups`);
+}
+
+export function setProjectGroup(id: number, groupId: number, role: string): Promise<void> {
+  return request<void>(`/projects/${id}/groups/${groupId}`, { method: "PUT", body: { role } });
+}
+
+export function removeProjectGroup(id: number, groupId: number): Promise<void> {
+  return request<void>(`/projects/${id}/groups/${groupId}`, { method: "DELETE" });
+}

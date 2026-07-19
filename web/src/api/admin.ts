@@ -49,6 +49,22 @@ export function removeGroupMember(id: number, userId: number): Promise<void> {
   return request<void>(`/admin/groups/${id}/members/${userId}`, { method: "DELETE" });
 }
 
+export interface SweepResult {
+  trashPurged: number;
+  revisionsPruned: number;
+  filesRemoved: number;
+}
+
+/** Ручной запуск уборки: корзина, старые ревизии, осиротевшие файлы. */
+export function runCleanup(): Promise<SweepResult> {
+  return request<SweepResult>("/admin/maintenance/cleanup", { method: "POST" });
+}
+
+/** Диагностика конфигурации авторизации (JWKS, провайдеры, ключ Apple). */
+export function authCheck(): Promise<Record<string, unknown>> {
+  return request<Record<string, unknown>>("/admin/auth/check");
+}
+
 /** Настройка приложения: значение + источник (env/yaml заблокированы). */
 export interface Setting {
   key: string;

@@ -1,7 +1,8 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Lock } from "lucide-react";
 import {
   addGroupMember,
+  authCheck,
   createGroup,
   deleteGroup,
   listGroupMembers,
@@ -9,20 +10,28 @@ import {
   listSettings,
   listUsers,
   removeGroupMember,
+  runCleanup,
   saveSetting,
   setUserRole,
   type AdminUser,
   type Group,
   type Setting,
 } from "../api/admin";
+import { downloadBackup, importBackup } from "../api/backup";
+import { ApiError } from "../api/client";
+import { useConfirm } from "../store/confirm";
 import {
   createProject,
   listMembers,
+  listProjectGroups,
   listProjects,
   removeMember,
+  removeProjectGroup,
   setMember,
+  setProjectGroup,
   updateProject,
   type Project,
+  type ProjectGroup,
   type ProjectMember,
 } from "../api/projects";
 import { relativeTime } from "../lib/format";
@@ -89,6 +98,8 @@ export function AdminScreen() {
 
         <GroupsSection />
 
+        <DataSection />
+
         <h2 className="mt-10 text-[15px] font-600 text-ink">Пользователи и роли</h2>
         <p className="mt-1 text-[13px] text-muted">
           Читатель — только просмотр; редактор — правка страниц; администратор —
@@ -132,6 +143,95 @@ export function AdminScreen() {
           </table>
         </div>
       </section>
+    </>
+  );
+}
+
+// «Данные»: экспорт/импорт всей БД (переехали из меню оформления) и ручной
+// запуск уборки; плюс диагностика конфигурации авторизации.
+function DataSection() {
+  const toast = useToast();
+  const confirm = useConfirm();
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [busy, setBusy] = useState(false);
+  const [check, setCheck] = useState<string | null>(null);
+
+  const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file) return;
+    const ok = await confirm({
+      title: "Импортировать резервную копию?",
+      message:
+        "Текущее содержимое БД (страницы, версии, файлы, пользователи, проекты) будет ПОЛНОСТЬЮ заменено данными из файла. Действие необратимо.",
+      confirmLabel: "Заменить и импортировать",
+      danger: true,
+    });
+    if (!ok) return;
+    setBusy(true);
+    try {
+      const r = await importBackup(file);
+      toast(`Импортировано: ${r.pages} стр., ${r.files} файлов`, "success");
+      setTimeout(() => (window.location.href = "/"), 600);
+    } catch (err) {
+      toast(err instanceof ApiError ? err.message : "не удалось импортировать", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cleanup = async () => {
+    setBusy(true);
+    try {
+      const r = await runCleanup();
+      toast(
+        `Уборка: корзина ${r.trashPurged}, ревизии ${r.revisionsPruned}, файлы ${r.filesRemoved}`,
+        "success",
+      );
+    } catch {
+      toast("Уборка завершилась с ошибками", "error");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const doCheck = async () => {
+    try {
+      setCheck(JSON.stringify(await authCheck(), null, 2));
+    } catch {
+      setCheck("Проверка не удалась");
+    }
+  };
+
+  return (
+    <>
+      <h2 className="mt-10 text-[15px] font-600 text-ink">Данные и обслуживание</h2>
+      <div className="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" onClick={() => downloadBackup()}
+          className="rounded-md border border-line px-3 py-1.5 text-[13px] text-body hover:border-faint">
+          Экспорт БД (.json)
+        </button>
+        <button type="button" disabled={busy} onClick={() => fileRef.current?.click()}
+          className="rounded-md border border-line px-3 py-1.5 text-[13px] text-body hover:border-faint disabled:opacity-50">
+          {busy ? "…" : "Импорт БД (перезапись)"}
+        </button>
+        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onImportFile} />
+        <button type="button" disabled={busy} onClick={cleanup}
+          className="rounded-md border border-line px-3 py-1.5 text-[13px] text-body hover:border-faint disabled:opacity-50">
+          Запустить уборку
+        </button>
+        <button type="button" onClick={doCheck}
+          className="rounded-md border border-line px-3 py-1.5 text-[13px] text-body hover:border-faint">
+          Проверить авторизацию
+        </button>
+      </div>
+      <p className="mt-1.5 text-[12px] text-muted">
+        Уборка удаляет просроченную корзину, прореживает старые ревизии и
+        чистит осиротевшие файлы (то же происходит автоматически раз в сутки).
+      </p>
+      {check && (
+        <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-card p-3 font-mono text-[12px] text-body">{check}</pre>
+      )}
     </>
   );
 }
@@ -262,8 +362,11 @@ function ProjectsSection() {
   const [newName, setNewName] = useState("");
   const [openId, setOpenId] = useState<number | null>(null);
   const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [projGroups, setProjGroups] = useState<ProjectGroup[]>([]);
   const [allUsers, setAllUsers] = useState<AdminUser[]>([]);
+  const [allGroups, setAllGroups] = useState<Group[]>([]);
   const [addUserId, setAddUserId] = useState("");
+  const [addGroupId, setAddGroupId] = useState("");
 
   const load = () => {
     listProjects()
@@ -304,6 +407,8 @@ function ProjectsSection() {
       return;
     }
     setMembers(await listMembers(p.id).catch(() => []));
+    setProjGroups(await listProjectGroups(p.id).catch(() => []));
+    listGroups().then(setAllGroups).catch(() => undefined);
     setOpenId(p.id);
   };
 
@@ -412,6 +517,64 @@ function ProjectsSection() {
                   >
                     Добавить
                   </button>
+                </div>
+
+                {/* Группы проекта: роль всей группе разом. */}
+                <div className="mt-3 border-t border-line/60 pt-2">
+                  <div className="mb-1 text-[11px] font-600 uppercase tracking-wide text-faint">Группы</div>
+                  {projGroups.map((g) => (
+                    <div key={g.groupId} className="flex items-center gap-2 py-1">
+                      <span className="min-w-0 flex-1 truncate text-[13px] text-body">{g.name}</span>
+                      <select
+                        value={g.role}
+                        onChange={async (e) => {
+                          await setProjectGroup(p.id, g.groupId, e.target.value);
+                          setProjGroups((l) => l.map((x) => (x.groupId === g.groupId ? { ...x, role: e.target.value } : x)));
+                        }}
+                        className="rounded-md border border-line bg-card px-2 py-0.5 text-[12px] text-body outline-none"
+                      >
+                        {ROLES.map((r) => (
+                          <option key={r.value} value={r.value}>{r.label}</option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          await removeProjectGroup(p.id, g.groupId);
+                          setProjGroups((l) => l.filter((x) => x.groupId !== g.groupId));
+                        }}
+                        className="rounded px-1.5 text-[12px] text-red-500 hover:bg-red-500/10"
+                      >
+                        Убрать
+                      </button>
+                    </div>
+                  ))}
+                  <div className="mt-1.5 flex items-center gap-2">
+                    <select
+                      value={addGroupId}
+                      onChange={(e) => setAddGroupId(e.target.value)}
+                      className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-1 text-[12px] text-body outline-none"
+                    >
+                      <option value="">Добавить группу…</option>
+                      {allGroups
+                        .filter((g) => !projGroups.some((x) => x.groupId === g.id))
+                        .map((g) => (
+                          <option key={g.id} value={g.id}>{g.name}</option>
+                        ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={!addGroupId}
+                      onClick={async () => {
+                        await setProjectGroup(p.id, Number(addGroupId), "editor");
+                        setProjGroups(await listProjectGroups(p.id).catch(() => []));
+                        setAddGroupId("");
+                      }}
+                      className="rounded-md border border-line px-2.5 py-1 text-[12px] text-body transition hover:border-faint disabled:opacity-50"
+                    >
+                      Добавить
+                    </button>
+                  </div>
                 </div>
               </div>
             )}

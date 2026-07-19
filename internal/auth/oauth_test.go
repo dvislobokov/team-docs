@@ -90,7 +90,7 @@ func oauthApp(t *testing.T, cfg config.AuthSettings, subject, email string) (*ec
 	NewHandler(a).Register(api)
 	admin := e.Group("/api/admin", Middleware(a, reg, log), RequireAdmin(a, log))
 	admin.GET("/ping", func(c echo.Context) error { return c.NoContent(http.StatusNoContent) })
-	NewAdminHandler(pool, reg).Register(admin)
+	NewAdminHandler(pool, reg, a).Register(admin)
 	return e, a
 }
 

@@ -1,6 +1,8 @@
 package auth
 
 import (
+	"context"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,15 +13,16 @@ import (
 	"team-docs/internal/store"
 )
 
-// AdminHandler — /api/admin/*: управление пользователями и ролями (ROADMAP §9).
-// Группа должна быть за RequireAdmin.
+// AdminHandler — /api/admin/*: управление пользователями, ролями и группами
+// (ROADMAP §9). Группа должна быть за RequireAdmin.
 type AdminHandler struct {
 	q   *store.Queries
 	reg *Registry
+	a   *Authenticator
 }
 
-func NewAdminHandler(pool *pgxpool.Pool, reg *Registry) *AdminHandler {
-	return &AdminHandler{q: store.New(pool), reg: reg}
+func NewAdminHandler(pool *pgxpool.Pool, reg *Registry, a *Authenticator) *AdminHandler {
+	return &AdminHandler{q: store.New(pool), reg: reg, a: a}
 }
 
 func (h *AdminHandler) Register(g *echo.Group) {
@@ -31,6 +34,49 @@ func (h *AdminHandler) Register(g *echo.Group) {
 	g.GET("/groups/:id/members", h.groupMembers)
 	g.PUT("/groups/:id/members/:userId", h.addGroupMember)
 	g.DELETE("/groups/:id/members/:userId", h.removeGroupMember)
+	g.GET("/auth/check", h.authCheck)
+}
+
+// authCheck — диагностика конфигурации авторизации: доступность JWKS,
+// валидность ключа Apple, список настроенных провайдеров.
+func (h *AdminHandler) authCheck(c echo.Context) error {
+	cfg := h.a.Config()
+	out := echo.Map{"enabled": cfg.Enabled, "publicRead": cfg.PublicRead}
+
+	if cfg.JWKSURL != "" {
+		ctx, cancel := context.WithTimeout(c.Request().Context(), 5*time.Second)
+		defer cancel()
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, cfg.JWKSURL, nil)
+		resp, err := http.DefaultClient.Do(req)
+		switch {
+		case err != nil:
+			out["jwks"] = "ошибка: " + err.Error()
+		case resp.StatusCode != http.StatusOK:
+			_ = resp.Body.Close()
+			out["jwks"] = fmt.Sprintf("ошибка: HTTP %d", resp.StatusCode)
+		default:
+			_ = resp.Body.Close()
+			out["jwks"] = "ok"
+		}
+	}
+
+	var providers []string
+	for _, p := range BuildProviders(cfg) {
+		providers = append(providers, p.Key)
+	}
+	out["providers"] = providers
+
+	if cfg.Providers.Apple.ClientID != "" {
+		if _, err := appleClientSecret(cfg.Providers.Apple); err != nil {
+			out["apple"] = "ошибка ключа: " + err.Error()
+		} else {
+			out["apple"] = "ok"
+		}
+	}
+	if cfg.PublicURL == "" && len(providers) > 0 {
+		out["warning"] = "auth.publicUrl не задан — redirect_uri провайдеров будет неверным"
+	}
+	return c.JSON(http.StatusOK, out)
 }
 
 func (h *AdminHandler) listGroups(c echo.Context) error {
