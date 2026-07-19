@@ -18,7 +18,13 @@ type Server struct {
 	log  *srog.Logger
 	pool *pgxpool.Pool
 	cfg  *config.Settings
+	// brandingFn — динамический источник брендинга (настройки в БД, §9);
+	// nil → статичный конфиг.
+	brandingFn func() config.BrandingSettings
 }
+
+// SetBrandingSource подключает динамический источник брендинга.
+func (s *Server) SetBrandingSource(fn func() config.BrandingSettings) { s.brandingFn = fn }
 
 // New собирает сервер: middleware, базовые роуты. API-модули регистрируются отдельно.
 func New(cfg *config.Settings, log *srog.Logger, pool *pgxpool.Pool) *Server {
@@ -74,6 +80,9 @@ func (s *Server) health(c echo.Context) error {
 // задаёт дефолт (branding.theme).
 func (s *Server) branding(c echo.Context) error {
 	b := s.cfg.Branding
+	if s.brandingFn != nil {
+		b = s.brandingFn()
+	}
 
 	themes := make([]echo.Map, 0, len(config.Themes()))
 	for _, t := range config.Themes() {

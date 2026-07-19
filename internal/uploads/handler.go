@@ -19,12 +19,13 @@ const defaultMaxBytes = 20 << 20 // 20 MiB
 // Handler обслуживает загрузку и отдачу файлов из редактора. Содержимое
 // хранится в БД (BYTEA), диск не используется.
 type Handler struct {
-	q        *store.Queries
-	log      *srog.Logger
-	maxBytes int64
+	q   *store.Queries
+	log *srog.Logger
+	// maxBytes — динамический лимит (настройки в БД, §9).
+	maxBytes func() int64
 }
 
-func NewHandler(pool *pgxpool.Pool, log *srog.Logger, maxBytes int64) *Handler {
+func NewHandler(pool *pgxpool.Pool, log *srog.Logger, maxBytes func() int64) *Handler {
 	return &Handler{q: store.New(pool), log: log, maxBytes: maxBytes}
 }
 
@@ -39,7 +40,7 @@ func (h *Handler) upload(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "file field required")
 	}
 
-	limit := h.maxBytes
+	limit := h.maxBytes()
 	if limit <= 0 {
 		limit = defaultMaxBytes
 	}

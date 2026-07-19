@@ -18,3 +18,21 @@ export function listUsers(signal?: AbortSignal): Promise<AdminUser[]> {
 export function setUserRole(id: number, role: string): Promise<void> {
   return request<void>(`/admin/users/${id}/role`, { method: "PUT", body: { role } });
 }
+
+/** Настройка приложения: значение + источник (env/yaml заблокированы). */
+export interface Setting {
+  key: string;
+  label: string;
+  kind: "string" | "int";
+  value: string | number;
+  source: "env" | "yaml" | "db" | "default";
+  editable: boolean;
+}
+
+export function listSettings(signal?: AbortSignal): Promise<Setting[]> {
+  return request<Setting[]>("/admin/settings", { signal });
+}
+
+export function saveSetting(key: string, value: string | number): Promise<void> {
+  return request<void>("/admin/settings", { method: "PUT", body: { key, value } });
+}

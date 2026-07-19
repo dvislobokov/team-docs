@@ -17,6 +17,7 @@ import (
 	"team-docs/internal/mcp"
 	"team-docs/internal/pages"
 	"team-docs/internal/server"
+	"team-docs/internal/settings"
 	"team-docs/internal/uploads"
 )
 
@@ -74,12 +75,20 @@ func main() {
 	api := srv.API()
 	api.Use(auth.Middleware(authenticator, registry, log))
 	api.Use(auth.RequireEditor(authenticator, log))
+	// Настройки в БД (env > yaml > БД > дефолт; конфиг блокирует правку).
+	settingsSvc, err := settings.New(pool, cfg, "appsettings.yaml")
+	if err != nil {
+		log.Fatal(err, "failed to init settings")
+	}
+	srv.SetBrandingSource(settingsSvc.Branding)
+
 	auth.NewHandler(authenticator).Register(api)
-	// Админка: управление пользователями и ролями (только для role=admin).
-	auth.NewAdminHandler(pool, registry).
-		Register(api.Group("/admin", auth.RequireAdmin(authenticator, log)))
+	// Админка: пользователи/роли и настройки (только для role=admin).
+	adminGroup := api.Group("/admin", auth.RequireAdmin(authenticator, log))
+	auth.NewAdminHandler(pool, registry).Register(adminGroup)
+	settings.NewHandler(settingsSvc).Register(adminGroup)
 	pages.NewHandler(pool, log).Register(api)
-	uploads.NewHandler(pool, log, cfg.MaxUploadBytes).Register(api)
+	uploads.NewHandler(pool, log, settingsSvc.MaxUploadBytes).Register(api)
 	backup.NewHandler(pool, log, registry.Reset).Register(api, auth.RequireEditorStrict(authenticator, log))
 
 	// MCP-эндпоинт (/mcp): генерация доков LLM-агентом → прямо в team-docs.
