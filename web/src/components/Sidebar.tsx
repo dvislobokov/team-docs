@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Settings, Trash2, Upload } from "lucide-react";
+import { ChevronsUpDown, ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Settings, Trash2, Upload } from "lucide-react";
 import { createPage } from "../api/pages";
 import { useAuth } from "../store/auth";
 import { useBranding } from "../store/branding";
@@ -99,15 +99,15 @@ export function Sidebar() {
       {/* дерево */}
       <nav data-tour="tree" className="scroll flex-1 overflow-y-auto px-2 pb-4 text-[15px]">
         <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-3">
-          {projects.length > 1 ? (
+          {/* Переключатель проекта: явная кнопка-селект с шевроном. */}
+          <span className="relative flex min-w-0 flex-1 items-center" title="Сменить проект">
             <select
               value={project?.key ?? ""}
               onChange={(e) => {
                 const p = projects.find((x) => x.key === e.target.value);
                 if (p) setProject(p);
               }}
-              title="Проект"
-              className="min-w-0 flex-1 cursor-pointer truncate rounded-md border-0 bg-transparent py-0.5 text-[11px] font-600 uppercase tracking-[0.08em] text-faint outline-none transition hover:text-ink"
+              className="w-full cursor-pointer appearance-none truncate rounded-md border border-transparent bg-transparent py-0.5 pl-1 pr-5 text-[11px] font-600 uppercase tracking-[0.08em] text-faint outline-none transition hover:border-line hover:text-ink"
             >
               {projects.map((p) => (
                 <option key={p.key} value={p.key}>
@@ -115,11 +115,8 @@ export function Sidebar() {
                 </option>
               ))}
             </select>
-          ) : (
-            <span className="text-[11px] font-600 uppercase tracking-[0.08em] text-faint">
-              {project?.name ?? "Пространство"}
-            </span>
-          )}
+            <ChevronsUpDown className="pointer-events-none absolute right-1 h-3 w-3 text-faint" />
+          </span>
           {user.canEdit && project?.myRole !== "reader" && (
             <span className="flex items-center gap-0.5">
               <ImportMarkdown

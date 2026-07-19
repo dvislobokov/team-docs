@@ -25,6 +25,8 @@ interface TreeContextValue {
   projects: Project[];
   project: Project | null;
   setProject: (p: Project) => void;
+  /** Перечитать список проектов (после создания/удаления в админке). */
+  reloadProjects: () => Promise<void>;
   reload: () => Promise<void>;
   /** Перенести страницу к родителю на позицию (drag-n-drop); соседей переиндексирует сервер. */
   moveTo: (id: number, parentId: number | null, position: number) => Promise<void>;
@@ -38,17 +40,24 @@ export function TreeProvider({ children }: { children: ReactNode }) {
   const [projects, setProjects] = useState<Project[]>([]);
   const [project, setProjectState] = useState<Project | null>(null);
 
-  // Список проектов один раз; текущий — из localStorage (fallback: первый).
-  useEffect(() => {
-    listProjects()
-      .then((list) => {
-        setProjects(list);
-        const savedKey = localStorage.getItem(PROJECT_LS_KEY);
-        const current = list.find((p) => p.key === savedKey) ?? list[0] ?? null;
-        setProjectState(current);
-      })
-      .catch(() => setLoading(false));
+  // Текущий проект — из localStorage (fallback: первый доступный).
+  const reloadProjects = useCallback(async () => {
+    try {
+      const list = await listProjects();
+      setProjects(list);
+      const savedKey = localStorage.getItem(PROJECT_LS_KEY);
+      setProjectState((cur) => {
+        const wanted = cur?.key ?? savedKey;
+        return list.find((p) => p.key === wanted) ?? list[0] ?? null;
+      });
+    } catch {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void reloadProjects();
+  }, [reloadProjects]);
 
   const reload = useCallback(async () => {
     if (!project) return;
@@ -79,8 +88,8 @@ export function TreeProvider({ children }: { children: ReactNode }) {
 
   const tree = useMemo(() => buildTree(nodes), [nodes]);
   const value = useMemo<TreeContextValue>(
-    () => ({ nodes, tree, loading, projects, project, setProject, reload, moveTo }),
-    [nodes, tree, loading, projects, project, setProject, reload, moveTo],
+    () => ({ nodes, tree, loading, projects, project, setProject, reloadProjects, reload, moveTo }),
+    [nodes, tree, loading, projects, project, setProject, reloadProjects, reload, moveTo],
   );
 
   return <TreeContext.Provider value={value}>{children}</TreeContext.Provider>;

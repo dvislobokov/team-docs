@@ -37,6 +37,7 @@ import {
 import { relativeTime } from "../lib/format";
 import { useAuth } from "../store/auth";
 import { useToast } from "../store/toast";
+import { useTree } from "../store/tree";
 import { Topbar } from "./Topbar";
 
 const ROLES = [
@@ -357,6 +358,7 @@ const VISIBILITIES = [
 // Проекты: создание, видимость, участники с ролями (§10).
 function ProjectsSection() {
   const toast = useToast();
+  const { reloadProjects } = useTree();
   const [items, setItems] = useState<Project[] | null>(null);
   const [newKey, setNewKey] = useState("");
   const [newName, setNewName] = useState("");
@@ -386,6 +388,7 @@ function ProjectsSection() {
       setNewName("");
       toast("Проект создан", "success");
       load();
+      void reloadProjects(); // селектор в сайдбаре видит новый проект сразу
     } catch (e) {
       toast(e instanceof Error ? e.message : "Не удалось создать проект", "error");
     }
