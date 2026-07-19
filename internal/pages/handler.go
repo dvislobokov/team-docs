@@ -15,6 +15,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 
+	"team-docs/internal/auth"
 	"team-docs/internal/blocknote"
 	"team-docs/internal/store"
 )
@@ -58,6 +59,8 @@ type pageResponse struct {
 	Position  int32           `json:"position"`
 	Version   int32           `json:"version"`
 	UpdatedAt time.Time       `json:"updatedAt"`
+	// Имя последнего редактора; null для страниц без авторства (старые, MCP).
+	UpdatedByName *string `json:"updatedByName"`
 }
 
 type createRequest struct {
@@ -109,6 +112,7 @@ func (h *Handler) create(c echo.Context) error {
 	row, err := h.q.CreatePage(c.Request().Context(), store.CreatePageParams{
 		ParentID: req.ParentID,
 		Title:    req.Title,
+		AuthorID: auth.UserID(c),
 	})
 	if err != nil {
 		return h.fail(c, err, "create page")
@@ -138,14 +142,15 @@ func (h *Handler) get(c echo.Context) error {
 		return h.fail(c, err, "get page")
 	}
 	return c.JSON(http.StatusOK, pageResponse{
-		ID:        row.ID,
-		ParentID:  row.ParentID,
-		Title:     row.Title,
-		Icon:      row.Icon,
-		Content:   json.RawMessage(row.Content),
-		Position:  row.Position,
-		Version:   row.Version,
-		UpdatedAt: row.UpdatedAt.Time,
+		ID:            row.ID,
+		ParentID:      row.ParentID,
+		Title:         row.Title,
+		Icon:          row.Icon,
+		Content:       json.RawMessage(row.Content),
+		Position:      row.Position,
+		Version:       row.Version,
+		UpdatedAt:     row.UpdatedAt.Time,
+		UpdatedByName: row.UpdatedByName,
 	})
 }
 
@@ -170,6 +175,7 @@ func (h *Handler) update(c echo.Context) error {
 		ContentText: ExtractText(req.Content),
 		Version:     req.Version,
 		Icon:        req.Icon,
+		AuthorID:    auth.UserID(c),
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Либо страница не существует, либо конфликт версий.
@@ -182,23 +188,29 @@ func (h *Handler) update(c echo.Context) error {
 		return h.fail(c, err, "update page")
 	}
 
-	h.maybeSnapshot(ctx, row)
+	h.maybeSnapshot(ctx, row, auth.UserID(c))
 
+	// Имя редактора в ответе — сам текущий пользователь (это он и сохранил).
+	var updatedBy *string
+	if u, ok := auth.FromContext(c); ok && u != nil && u.ID != 0 {
+		updatedBy = &u.Name
+	}
 	return c.JSON(http.StatusOK, pageResponse{
-		ID:        row.ID,
-		ParentID:  row.ParentID,
-		Title:     row.Title,
-		Icon:      row.Icon,
-		Content:   json.RawMessage(row.Content),
-		Position:  row.Position,
-		Version:   row.Version,
-		UpdatedAt: row.UpdatedAt.Time,
+		ID:            row.ID,
+		ParentID:      row.ParentID,
+		Title:         row.Title,
+		Icon:          row.Icon,
+		Content:       json.RawMessage(row.Content),
+		Position:      row.Position,
+		Version:       row.Version,
+		UpdatedAt:     row.UpdatedAt.Time,
+		UpdatedByName: updatedBy,
 	})
 }
 
 // maybeSnapshot записывает снапшот версии не чаще revisionThrottle на страницу.
 // Ошибки только логируются — они не должны ломать основной ответ на сохранение.
-func (h *Handler) maybeSnapshot(ctx context.Context, row store.UpdatePageRow) {
+func (h *Handler) maybeSnapshot(ctx context.Context, row store.UpdatePageRow, authorID *int64) {
 	last, err := h.q.LatestRevisionAt(ctx, row.ID)
 	if err != nil {
 		h.log.Error(err, "pages: latest revision lookup failed for {ID}", row.ID)
@@ -209,10 +221,11 @@ func (h *Handler) maybeSnapshot(ctx context.Context, row store.UpdatePageRow) {
 		return
 	}
 	if err := h.q.InsertRevision(ctx, store.InsertRevisionParams{
-		PageID:  row.ID,
-		Version: row.Version,
-		Title:   row.Title,
-		Content: row.Content,
+		PageID:   row.ID,
+		Version:  row.Version,
+		Title:    row.Title,
+		Content:  row.Content,
+		AuthorID: authorID,
 	}); err != nil {
 		h.log.Error(err, "pages: insert revision failed for {ID}", row.ID)
 	}
@@ -259,14 +272,18 @@ func (h *Handler) revisions(c echo.Context) error {
 		return h.fail(c, err, "list revisions")
 	}
 	type rev struct {
-		ID        int64     `json:"id"`
-		Version   int32     `json:"version"`
-		Title     string    `json:"title"`
-		CreatedAt time.Time `json:"createdAt"`
+		ID         int64     `json:"id"`
+		Version    int32     `json:"version"`
+		Title      string    `json:"title"`
+		CreatedAt  time.Time `json:"createdAt"`
+		AuthorName *string   `json:"authorName"`
 	}
 	out := make([]rev, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, rev{ID: r.ID, Version: r.Version, Title: r.Title, CreatedAt: r.CreatedAt.Time})
+		out = append(out, rev{
+			ID: r.ID, Version: r.Version, Title: r.Title,
+			CreatedAt: r.CreatedAt.Time, AuthorName: r.AuthorName,
+		})
 	}
 	return c.JSON(http.StatusOK, out)
 }

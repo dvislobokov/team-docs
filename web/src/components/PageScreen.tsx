@@ -318,7 +318,8 @@ export function PageScreen() {
           </div>
 
           <p className="mt-3 font-mono text-[12px] text-muted">
-            Обновлено · {relativeTime(page.updatedAt)} ·{" "}
+            Обновлено · {relativeTime(page.updatedAt)}
+            {page.updatedByName ? ` · ${page.updatedByName}` : ""} ·{" "}
             {readingLabel(readingMinutes(page.content))}
             {editing && <SaveIndicator state={saveState} />}
           </p>

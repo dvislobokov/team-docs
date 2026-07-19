@@ -12,11 +12,13 @@ import (
 // авторизации пропускает запрос, подставляя dev-пользователя. Если авторизация
 // включена, но токена нет и разрешено публичное чтение (PublicRead) — пропускает
 // как анонима (identity не устанавливается; запись отсечёт RequireEditor).
-func Middleware(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
+// reg регистрирует пользователя в БД (авторство); ошибка регистрации не валит
+// запрос — авторство просто не запишется.
+func Middleware(a *Authenticator, reg *Registry, log *srog.Logger) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			if !a.Enabled() {
-				setUser(c, a.DevUser())
+				setUser(c, resolve(c, reg, a.DevUser(), log))
 				return next(c)
 			}
 
@@ -32,10 +34,24 @@ func Middleware(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
 				log.Error(err, "auth: token verification failed")
 				return echo.NewHTTPError(http.StatusUnauthorized, "invalid authorization token")
 			}
-			setUser(c, u)
+			setUser(c, resolve(c, reg, u, log))
 			return next(c)
 		}
 	}
+}
+
+// resolve проставляет пользователю id из users (upsert через Registry).
+func resolve(c echo.Context, reg *Registry, u *User, log *srog.Logger) *User {
+	if reg == nil {
+		return u
+	}
+	id, err := reg.EnsureUser(c.Request().Context(), u)
+	if err != nil {
+		log.Error(err, "auth: user registry upsert failed for {Subject}", u.Subject)
+		return u
+	}
+	u.ID = id
+	return u
 }
 
 // RequireEditor — гард на запись: методы, изменяющие данные (POST/PUT/PATCH/

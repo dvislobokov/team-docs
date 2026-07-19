@@ -57,10 +57,13 @@ func main() {
 
 	srv := server.New(cfg, log, pool)
 
+	// Реестр пользователей: upsert identity в users (авторство страниц).
+	registry := auth.NewRegistry(pool)
+
 	// Все /api-роуты (кроме /api/health) за middleware авторизации.
 	// Middleware — identity; RequireEditor — гард на запись (см. internal/auth).
 	api := srv.API()
-	api.Use(auth.Middleware(authenticator, log))
+	api.Use(auth.Middleware(authenticator, registry, log))
 	api.Use(auth.RequireEditor(authenticator, log))
 	auth.NewHandler(authenticator).Register(api)
 	pages.NewHandler(pool, log).Register(api)
@@ -73,7 +76,7 @@ func main() {
 	var mcpMW []echo.MiddlewareFunc
 	if cfg.Auth.Enabled {
 		mcpMW = []echo.MiddlewareFunc{
-			auth.Middleware(authenticator, log),
+			auth.Middleware(authenticator, registry, log),
 			auth.RequireEditorStrict(authenticator, log),
 		}
 	}

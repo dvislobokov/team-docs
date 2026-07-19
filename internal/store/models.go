@@ -39,6 +39,8 @@ type Page struct {
 	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
 	Icon         string             `json:"icon"`
 	SearchVector interface{}        `json:"search_vector"`
+	CreatedBy    *int64             `json:"created_by"`
+	UpdatedBy    *int64             `json:"updated_by"`
 }
 
 type PageRevision struct {
@@ -48,4 +50,15 @@ type PageRevision struct {
 	Title     string             `json:"title"`
 	Content   []byte             `json:"content"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	AuthorID  *int64             `json:"author_id"`
+}
+
+type User struct {
+	ID         int64              `json:"id"`
+	Subject    string             `json:"subject"`
+	Username   string             `json:"username"`
+	Name       string             `json:"name"`
+	Email      string             `json:"email"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
 }

@@ -5,16 +5,19 @@ FROM pages
 ORDER BY parent_id NULLS FIRST, position, id;
 
 -- name: GetPage :one
-SELECT id, parent_id, title, icon, content, position, version, created_at, updated_at
-FROM pages
-WHERE id = $1;
+SELECT p.id, p.parent_id, p.title, p.icon, p.content, p.position, p.version,
+       p.created_at, p.updated_at,
+       u.name AS updated_by_name
+FROM pages p
+LEFT JOIN users u ON u.id = p.updated_by
+WHERE p.id = $1;
 
 -- name: CreatePage :one
-INSERT INTO pages (parent_id, title, position)
+INSERT INTO pages (parent_id, title, position, created_by, updated_by)
 VALUES ($1, $2, COALESCE(
     (SELECT MAX(position) + 1 FROM pages WHERE parent_id IS NOT DISTINCT FROM $1),
     0
-))
+), sqlc.narg(author_id), sqlc.narg(author_id))
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at;
 
 -- name: UpdatePage :one
@@ -25,6 +28,7 @@ SET title        = $2,
     content      = $3,
     content_text = $4,
     icon         = $6,
+    updated_by   = sqlc.narg(author_id),
     version      = version + 1,
     updated_at   = now()
 WHERE id = $1
@@ -85,14 +89,16 @@ ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
 LIMIT 50;
 
 -- name: InsertRevision :exec
-INSERT INTO page_revisions (page_id, version, title, content)
-VALUES ($1, $2, $3, $4);
+INSERT INTO page_revisions (page_id, version, title, content, author_id)
+VALUES ($1, $2, $3, $4, sqlc.narg(author_id));
 
 -- name: ListRevisions :many
-SELECT id, page_id, version, title, created_at
-FROM page_revisions
-WHERE page_id = $1
-ORDER BY version DESC
+SELECT r.id, r.page_id, r.version, r.title, r.created_at,
+       u.name AS author_name
+FROM page_revisions r
+LEFT JOIN users u ON u.id = r.author_id
+WHERE r.page_id = $1
+ORDER BY r.version DESC
 LIMIT 100;
 
 -- name: GetRevision :one

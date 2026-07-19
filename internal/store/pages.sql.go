@@ -36,17 +36,18 @@ func (q *Queries) CountSiblings(ctx context.Context, arg CountSiblingsParams) (i
 }
 
 const createPage = `-- name: CreatePage :one
-INSERT INTO pages (parent_id, title, position)
+INSERT INTO pages (parent_id, title, position, created_by, updated_by)
 VALUES ($1, $2, COALESCE(
     (SELECT MAX(position) + 1 FROM pages WHERE parent_id IS NOT DISTINCT FROM $1),
     0
-))
+), $3, $3)
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at
 `
 
 type CreatePageParams struct {
 	ParentID *int64 `json:"parent_id"`
 	Title    string `json:"title"`
+	AuthorID *int64 `json:"author_id"`
 }
 
 type CreatePageRow struct {
@@ -62,7 +63,7 @@ type CreatePageRow struct {
 }
 
 func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreatePageRow, error) {
-	row := q.db.QueryRow(ctx, createPage, arg.ParentID, arg.Title)
+	row := q.db.QueryRow(ctx, createPage, arg.ParentID, arg.Title, arg.AuthorID)
 	var i CreatePageRow
 	err := row.Scan(
 		&i.ID,
@@ -88,21 +89,25 @@ func (q *Queries) DeletePage(ctx context.Context, id int64) error {
 }
 
 const getPage = `-- name: GetPage :one
-SELECT id, parent_id, title, icon, content, position, version, created_at, updated_at
-FROM pages
-WHERE id = $1
+SELECT p.id, p.parent_id, p.title, p.icon, p.content, p.position, p.version,
+       p.created_at, p.updated_at,
+       u.name AS updated_by_name
+FROM pages p
+LEFT JOIN users u ON u.id = p.updated_by
+WHERE p.id = $1
 `
 
 type GetPageRow struct {
-	ID        int64              `json:"id"`
-	ParentID  *int64             `json:"parent_id"`
-	Title     string             `json:"title"`
-	Icon      string             `json:"icon"`
-	Content   []byte             `json:"content"`
-	Position  int32              `json:"position"`
-	Version   int32              `json:"version"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID            int64              `json:"id"`
+	ParentID      *int64             `json:"parent_id"`
+	Title         string             `json:"title"`
+	Icon          string             `json:"icon"`
+	Content       []byte             `json:"content"`
+	Position      int32              `json:"position"`
+	Version       int32              `json:"version"`
+	CreatedAt     pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	UpdatedByName *string            `json:"updated_by_name"`
 }
 
 func (q *Queries) GetPage(ctx context.Context, id int64) (GetPageRow, error) {
@@ -118,6 +123,7 @@ func (q *Queries) GetPage(ctx context.Context, id int64) (GetPageRow, error) {
 		&i.Version,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.UpdatedByName,
 	)
 	return i, err
 }
@@ -189,9 +195,18 @@ FROM page_revisions
 WHERE id = $1
 `
 
-func (q *Queries) GetRevision(ctx context.Context, id int64) (PageRevision, error) {
+type GetRevisionRow struct {
+	ID        int64              `json:"id"`
+	PageID    int64              `json:"page_id"`
+	Version   int32              `json:"version"`
+	Title     string             `json:"title"`
+	Content   []byte             `json:"content"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+func (q *Queries) GetRevision(ctx context.Context, id int64) (GetRevisionRow, error) {
 	row := q.db.QueryRow(ctx, getRevision, id)
-	var i PageRevision
+	var i GetRevisionRow
 	err := row.Scan(
 		&i.ID,
 		&i.PageID,
@@ -204,15 +219,16 @@ func (q *Queries) GetRevision(ctx context.Context, id int64) (PageRevision, erro
 }
 
 const insertRevision = `-- name: InsertRevision :exec
-INSERT INTO page_revisions (page_id, version, title, content)
-VALUES ($1, $2, $3, $4)
+INSERT INTO page_revisions (page_id, version, title, content, author_id)
+VALUES ($1, $2, $3, $4, $5)
 `
 
 type InsertRevisionParams struct {
-	PageID  int64  `json:"page_id"`
-	Version int32  `json:"version"`
-	Title   string `json:"title"`
-	Content []byte `json:"content"`
+	PageID   int64  `json:"page_id"`
+	Version  int32  `json:"version"`
+	Title    string `json:"title"`
+	Content  []byte `json:"content"`
+	AuthorID *int64 `json:"author_id"`
 }
 
 func (q *Queries) InsertRevision(ctx context.Context, arg InsertRevisionParams) error {
@@ -221,6 +237,7 @@ func (q *Queries) InsertRevision(ctx context.Context, arg InsertRevisionParams) 
 		arg.Version,
 		arg.Title,
 		arg.Content,
+		arg.AuthorID,
 	)
 	return err
 }
@@ -239,19 +256,22 @@ func (q *Queries) LatestRevisionAt(ctx context.Context, pageID int64) (pgtype.Ti
 }
 
 const listRevisions = `-- name: ListRevisions :many
-SELECT id, page_id, version, title, created_at
-FROM page_revisions
-WHERE page_id = $1
-ORDER BY version DESC
+SELECT r.id, r.page_id, r.version, r.title, r.created_at,
+       u.name AS author_name
+FROM page_revisions r
+LEFT JOIN users u ON u.id = r.author_id
+WHERE r.page_id = $1
+ORDER BY r.version DESC
 LIMIT 100
 `
 
 type ListRevisionsRow struct {
-	ID        int64              `json:"id"`
-	PageID    int64              `json:"page_id"`
-	Version   int32              `json:"version"`
-	Title     string             `json:"title"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID         int64              `json:"id"`
+	PageID     int64              `json:"page_id"`
+	Version    int32              `json:"version"`
+	Title      string             `json:"title"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	AuthorName *string            `json:"author_name"`
 }
 
 func (q *Queries) ListRevisions(ctx context.Context, pageID int64) ([]ListRevisionsRow, error) {
@@ -269,6 +289,7 @@ func (q *Queries) ListRevisions(ctx context.Context, pageID int64) ([]ListRevisi
 			&i.Version,
 			&i.Title,
 			&i.CreatedAt,
+			&i.AuthorName,
 		); err != nil {
 			return nil, err
 		}
@@ -390,6 +411,7 @@ SET title        = $2,
     content      = $3,
     content_text = $4,
     icon         = $6,
+    updated_by   = $7,
     version      = version + 1,
     updated_at   = now()
 WHERE id = $1
@@ -404,6 +426,7 @@ type UpdatePageParams struct {
 	ContentText string `json:"content_text"`
 	Version     int32  `json:"version"`
 	Icon        string `json:"icon"`
+	AuthorID    *int64 `json:"author_id"`
 }
 
 type UpdatePageRow struct {
@@ -428,6 +451,7 @@ func (q *Queries) UpdatePage(ctx context.Context, arg UpdatePageParams) (UpdateP
 		arg.ContentText,
 		arg.Version,
 		arg.Icon,
+		arg.AuthorID,
 	)
 	var i UpdatePageRow
 	err := row.Scan(

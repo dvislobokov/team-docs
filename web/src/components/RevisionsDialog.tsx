@@ -71,6 +71,7 @@ export function RevisionsDialog({ pageId, open, onOpenChange, onRestore }: Revis
                   </span>
                   <span className="block text-[12px] text-muted">
                     {relativeTime(r.createdAt)}
+                    {r.authorName ? ` · ${r.authorName}` : ""}
                   </span>
                 </span>
                 <button

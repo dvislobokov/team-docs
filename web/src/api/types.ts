@@ -16,6 +16,8 @@ export interface Page {
   position: number;
   version: number;
   updatedAt: string; // RFC3339
+  /** Имя последнего редактора; null для страниц без авторства (старые, MCP). */
+  updatedByName: string | null;
 }
 
 /** Узел плоского списка дерева (GET /api/pages/tree). */
@@ -49,6 +51,7 @@ export interface Revision {
   version: number;
   title: string;
   createdAt: string;
+  authorName: string | null;
 }
 
 /** Ревизия с контентом (GET /pages/:id/revisions/:revId) — для отката. */
