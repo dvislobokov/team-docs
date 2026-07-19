@@ -11,6 +11,30 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const countSiblings = `-- name: CountSiblings :one
+
+SELECT COUNT(*)
+FROM pages
+WHERE parent_id IS NOT DISTINCT FROM $1
+  AND id <> $2
+`
+
+type CountSiblingsParams struct {
+	ParentID *int64 `json:"parent_id"`
+	PageID   int64  `json:"page_id"`
+}
+
+// Проверка «candidate в поддереве root» для move живёт сырым SQL в
+// internal/pages/handler.go (isInSubtreeSQL): рекурсивный CTE не проходит
+// через анализатор sqlc.
+// Число детей родителя без самой переносимой страницы (для клампа позиции).
+func (q *Queries) CountSiblings(ctx context.Context, arg CountSiblingsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countSiblings, arg.ParentID, arg.PageID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createPage = `-- name: CreatePage :one
 INSERT INTO pages (parent_id, title, position)
 VALUES ($1, $2, COALESCE(
@@ -95,6 +119,26 @@ func (q *Queries) GetPage(ctx context.Context, id int64) (GetPageRow, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
+	return i, err
+}
+
+const getPageMeta = `-- name: GetPageMeta :one
+SELECT id, parent_id, position
+FROM pages
+WHERE id = $1
+`
+
+type GetPageMetaRow struct {
+	ID       int64  `json:"id"`
+	ParentID *int64 `json:"parent_id"`
+	Position int32  `json:"position"`
+}
+
+// Лёгкое чтение для move: родитель и позиция без контента.
+func (q *Queries) GetPageMeta(ctx context.Context, id int64) (GetPageMetaRow, error) {
+	row := q.db.QueryRow(ctx, getPageMeta, id)
+	var i GetPageMetaRow
+	err := row.Scan(&i.ID, &i.ParentID, &i.Position)
 	return i, err
 }
 
@@ -257,11 +301,11 @@ func (q *Queries) MovePage(ctx context.Context, arg MovePageParams) error {
 
 const searchPages = `-- name: SearchPages :many
 SELECT id, parent_id, title, icon,
-       ts_headline('simple', content_text, plainto_tsquery('simple', $1),
+       ts_headline('russian', content_text, plainto_tsquery('russian', $1),
                    'MaxFragments=1,MaxWords=20,MinWords=5') AS snippet
 FROM pages
-WHERE to_tsvector('simple', title || ' ' || content_text) @@ plainto_tsquery('simple', $1)
-ORDER BY ts_rank(to_tsvector('simple', content_text), plainto_tsquery('simple', $1)) DESC
+WHERE search_vector @@ plainto_tsquery('russian', $1)
+ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
 LIMIT 50
 `
 
@@ -273,6 +317,7 @@ type SearchPagesRow struct {
 	Snippet  []byte `json:"snippet"`
 }
 
+// Поиск по генерируемой колонке search_vector (русская морфология, GIN-индекс).
 func (q *Queries) SearchPages(ctx context.Context, plaintoTsquery string) ([]SearchPagesRow, error) {
 	rows, err := q.db.Query(ctx, searchPages, plaintoTsquery)
 	if err != nil {
@@ -297,6 +342,46 @@ func (q *Queries) SearchPages(ctx context.Context, plaintoTsquery string) ([]Sea
 		return nil, err
 	}
 	return items, nil
+}
+
+const shiftAfterRemove = `-- name: ShiftAfterRemove :exec
+UPDATE pages
+SET position = position - 1
+WHERE parent_id IS NOT DISTINCT FROM $1
+  AND position > $2
+  AND id <> $3
+`
+
+type ShiftAfterRemoveParams struct {
+	ParentID *int64 `json:"parent_id"`
+	Position int32  `json:"position"`
+	PageID   int64  `json:"page_id"`
+}
+
+// «Изъятие» страницы из старого родителя: соседи ниже сдвигаются вверх.
+func (q *Queries) ShiftAfterRemove(ctx context.Context, arg ShiftAfterRemoveParams) error {
+	_, err := q.db.Exec(ctx, shiftAfterRemove, arg.ParentID, arg.Position, arg.PageID)
+	return err
+}
+
+const shiftForInsert = `-- name: ShiftForInsert :exec
+UPDATE pages
+SET position = position + 1
+WHERE parent_id IS NOT DISTINCT FROM $1
+  AND position >= $2
+  AND id <> $3
+`
+
+type ShiftForInsertParams struct {
+	ParentID *int64 `json:"parent_id"`
+	Position int32  `json:"position"`
+	PageID   int64  `json:"page_id"`
+}
+
+// Освобождение места под вставку: соседи с позиции вставки сдвигаются вниз.
+func (q *Queries) ShiftForInsert(ctx context.Context, arg ShiftForInsertParams) error {
+	_, err := q.db.Exec(ctx, shiftForInsert, arg.ParentID, arg.Position, arg.PageID)
+	return err
 }
 
 const updatePage = `-- name: UpdatePage :one

@@ -24,12 +24,13 @@ const revisionThrottle = 2 * time.Minute
 
 // Handler обслуживает /api/pages/* и /api/search.
 type Handler struct {
-	q   *store.Queries
-	log *srog.Logger
+	q    *store.Queries
+	pool *pgxpool.Pool // для многошаговых операций в транзакции (move)
+	log  *srog.Logger
 }
 
 func NewHandler(pool *pgxpool.Pool, log *srog.Logger) *Handler {
-	return &Handler{q: store.New(pool), log: log}
+	return &Handler{q: store.New(pool), pool: pool, log: log}
 }
 
 // Register регистрирует роуты на группе /api.
@@ -226,11 +227,12 @@ func (h *Handler) move(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid body")
 	}
-	if err := h.q.MovePage(c.Request().Context(), store.MovePageParams{
-		ID:       id,
-		ParentID: req.ParentID,
-		Position: req.Position,
-	}); err != nil {
+	switch err := Move(c.Request().Context(), h.pool, id, req.ParentID, req.Position); {
+	case errors.Is(err, ErrPageNotFound):
+		return echo.NewHTTPError(http.StatusNotFound, "page not found")
+	case errors.Is(err, ErrMoveIntoSubtree):
+		return echo.NewHTTPError(http.StatusBadRequest, "cannot move page into its own subtree")
+	case err != nil:
 		return h.fail(c, err, "move page")
 	}
 	return c.NoContent(http.StatusNoContent)

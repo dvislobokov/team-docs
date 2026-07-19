@@ -19,8 +19,8 @@ interface TreeContextValue {
   tree: TreeItem[];
   loading: boolean;
   reload: () => Promise<void>;
-  /** Переиндексировать детей родителя в заданном порядке (drag-n-drop). */
-  moveTo: (parentId: number | null, orderedIds: number[]) => Promise<void>;
+  /** Перенести страницу к родителю на позицию (drag-n-drop); соседей переиндексирует сервер. */
+  moveTo: (id: number, parentId: number | null, position: number) => Promise<void>;
 }
 
 const TreeContext = createContext<TreeContextValue | null>(null);
@@ -42,9 +42,9 @@ export function TreeProvider({ children }: { children: ReactNode }) {
   }, [reload]);
 
   const moveTo = useCallback(
-    async (parentId: number | null, orderedIds: number[]) => {
-      // Позиции присваиваем по порядку; параллельные PATCH’и, затем рефетч.
-      await Promise.all(orderedIds.map((id, i) => movePage(id, { parentId, position: i })));
+    async (id: number, parentId: number | null, position: number) => {
+      // Один PATCH: сервер атомарно проверяет цикл и переиндексирует соседей.
+      await movePage(id, { parentId, position });
       await reload();
     },
     [reload],

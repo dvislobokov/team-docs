@@ -42,14 +42,15 @@ func New(pool *pgxpool.Pool, log *srog.Logger) *server.MCPServer {
 				"родителя и не плодить дубли.",
 		),
 	)
-	h := &handlers{q: store.New(pool), log: log}
+	h := &handlers{q: store.New(pool), pool: pool, log: log}
 	h.register(s)
 	return s
 }
 
 type handlers struct {
-	q   *store.Queries
-	log *srog.Logger
+	q    *store.Queries
+	pool *pgxpool.Pool // для операций с транзакцией (move)
+	log  *srog.Logger
 }
 
 func (h *handlers) register(s *server.MCPServer) {
@@ -283,11 +284,10 @@ func (h *handlers) movePage(ctx context.Context, r mcp.CallToolRequest) (*mcp.Ca
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	if err := h.q.MovePage(ctx, store.MovePageParams{
-		ID:       int64(id),
-		ParentID: optParentID(r),
-		Position: int32(r.GetInt("position", 0)),
-	}); err != nil {
+	switch err := pages.Move(ctx, h.pool, int64(id), optParentID(r), int32(r.GetInt("position", 0))); {
+	case errors.Is(err, pages.ErrPageNotFound), errors.Is(err, pages.ErrMoveIntoSubtree):
+		return mcp.NewToolResultError(err.Error()), nil
+	case err != nil:
 		return h.fail("move_page", err)
 	}
 	return jsonResult(map[string]any{"status": "moved", "id": id})

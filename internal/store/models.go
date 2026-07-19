@@ -28,16 +28,17 @@ type File struct {
 }
 
 type Page struct {
-	ID          int64              `json:"id"`
-	ParentID    *int64             `json:"parent_id"`
-	Title       string             `json:"title"`
-	Content     []byte             `json:"content"`
-	ContentText string             `json:"content_text"`
-	Position    int32              `json:"position"`
-	Version     int32              `json:"version"`
-	CreatedAt   pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt   pgtype.Timestamptz `json:"updated_at"`
-	Icon        string             `json:"icon"`
+	ID           int64              `json:"id"`
+	ParentID     *int64             `json:"parent_id"`
+	Title        string             `json:"title"`
+	Content      []byte             `json:"content"`
+	ContentText  string             `json:"content_text"`
+	Position     int32              `json:"position"`
+	Version      int32              `json:"version"`
+	CreatedAt    pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt    pgtype.Timestamptz `json:"updated_at"`
+	Icon         string             `json:"icon"`
+	SearchVector interface{}        `json:"search_vector"`
 }
 
 type PageRevision struct {

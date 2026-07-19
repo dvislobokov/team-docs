@@ -56,13 +56,13 @@ export type DropMode = "before" | "after" | "inside";
 
 export interface MovePlan {
   parentId: number | null;
-  /** Полный новый порядок id детей целевого родителя. */
-  orderedIds: number[];
+  /** Позиция вставки среди детей нового родителя (без учёта самой страницы). */
+  position: number;
 }
 
 // Планирует перенос dragId относительно targetId. Возвращает нового родителя и
-// новый порядок его детей; null — если перенос недопустим (в себя/в потомка/без
-// изменений). Позиции сиблингов после этого переиндексируются на клиенте.
+// позицию вставки; null — если перенос недопустим (в себя/в потомка/без
+// изменений). Переиндексацию соседей делает сервер атомарно (PATCH move).
 export function planMove(
   nodes: PageTreeNode[],
   dragId: number,
@@ -99,11 +99,10 @@ export function planMove(
     insertAt = mode === "before" ? ti : ti + 1;
   }
 
-  const orderedIds = [...siblings.slice(0, insertAt), dragId, ...siblings.slice(insertAt)];
-
   // Без изменений — если родитель тот же и порядок совпал.
+  const orderedIds = [...siblings.slice(0, insertAt), dragId, ...siblings.slice(insertAt)];
   const before = childrenOf(parentId);
   if (drag.parentId === parentId && before.join(",") === orderedIds.join(",")) return null;
 
-  return { parentId, orderedIds };
+  return { parentId, position: insertAt };
 }

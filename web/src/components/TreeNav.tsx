@@ -341,7 +341,7 @@ export function TreeNav() {
   const performMove = (dragId: number, targetId: number, mode: DropMode) => {
     const plan = planMove(nodes, dragId, targetId, mode);
     if (!plan) return;
-    void moveTo(plan.parentId, plan.orderedIds);
+    void moveTo(dragId, plan.parentId, plan.position);
   };
 
   if (loading) {

@@ -31,6 +31,39 @@ WHERE id = $1
   AND version = $5
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at;
 
+-- name: GetPageMeta :one
+-- Лёгкое чтение для move: родитель и позиция без контента.
+SELECT id, parent_id, position
+FROM pages
+WHERE id = $1;
+
+-- Проверка «candidate в поддереве root» для move живёт сырым SQL в
+-- internal/pages/handler.go (isInSubtreeSQL): рекурсивный CTE не проходит
+-- через анализатор sqlc.
+
+-- name: CountSiblings :one
+-- Число детей родителя без самой переносимой страницы (для клампа позиции).
+SELECT COUNT(*)
+FROM pages
+WHERE parent_id IS NOT DISTINCT FROM sqlc.narg(parent_id)
+  AND id <> sqlc.arg(page_id);
+
+-- name: ShiftAfterRemove :exec
+-- «Изъятие» страницы из старого родителя: соседи ниже сдвигаются вверх.
+UPDATE pages
+SET position = position - 1
+WHERE parent_id IS NOT DISTINCT FROM sqlc.narg(parent_id)
+  AND position > sqlc.arg(position)
+  AND id <> sqlc.arg(page_id);
+
+-- name: ShiftForInsert :exec
+-- Освобождение места под вставку: соседи с позиции вставки сдвигаются вниз.
+UPDATE pages
+SET position = position + 1
+WHERE parent_id IS NOT DISTINCT FROM sqlc.narg(parent_id)
+  AND position >= sqlc.arg(position)
+  AND id <> sqlc.arg(page_id);
+
 -- name: MovePage :exec
 UPDATE pages
 SET parent_id  = $2,
@@ -42,12 +75,13 @@ WHERE id = $1;
 DELETE FROM pages WHERE id = $1;
 
 -- name: SearchPages :many
+-- Поиск по генерируемой колонке search_vector (русская морфология, GIN-индекс).
 SELECT id, parent_id, title, icon,
-       ts_headline('simple', content_text, plainto_tsquery('simple', $1),
+       ts_headline('russian', content_text, plainto_tsquery('russian', $1),
                    'MaxFragments=1,MaxWords=20,MinWords=5') AS snippet
 FROM pages
-WHERE to_tsvector('simple', title || ' ' || content_text) @@ plainto_tsquery('simple', $1)
-ORDER BY ts_rank(to_tsvector('simple', content_text), plainto_tsquery('simple', $1)) DESC
+WHERE search_vector @@ plainto_tsquery('russian', $1)
+ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
 LIMIT 50;
 
 -- name: InsertRevision :exec
