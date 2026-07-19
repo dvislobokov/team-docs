@@ -1,0 +1,13 @@
+# Не тащим в контекст сборки тяжёлое и лишнее.
+.git
+.github
+.idea
+docs
+design
+web/node_modules
+web/dist
+team-docs
+team-docs.exe
+*.md
+docker-compose*.yml
+Dockerfile
