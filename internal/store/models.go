@@ -42,6 +42,7 @@ type Page struct {
 	CreatedBy    *int64             `json:"created_by"`
 	UpdatedBy    *int64             `json:"updated_by"`
 	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
+	ProjectID    int64              `json:"project_id"`
 }
 
 type PageRevision struct {
@@ -52,6 +53,21 @@ type PageRevision struct {
 	Content   []byte             `json:"content"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	AuthorID  *int64             `json:"author_id"`
+}
+
+type Project struct {
+	ID        int64              `json:"id"`
+	Key       string             `json:"key"`
+	Name      string             `json:"name"`
+	Icon      string             `json:"icon"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type Setting struct {
+	Key       string             `json:"key"`
+	Value     []byte             `json:"value"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	UpdatedBy *int64             `json:"updated_by"`
 }
 
 type User struct {

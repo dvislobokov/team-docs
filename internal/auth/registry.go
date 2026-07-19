@@ -30,6 +30,14 @@ func NewRegistry(pool *pgxpool.Pool) *Registry {
 	return &Registry{q: store.New(pool), m: map[string]registryEntry{}}
 }
 
+// Reset сбрасывает кэш subject→id. Вызывается после импорта бэкапа:
+// таблица users пересоздана, старые id невалидны.
+func (r *Registry) Reset() {
+	r.mu.Lock()
+	r.m = map[string]registryEntry{}
+	r.mu.Unlock()
+}
+
 // EnsureUser возвращает id пользователя в БД, создавая/обновляя запись при
 // необходимости. Профиль (имя/почта) обновляется не чаще registryTTL.
 func (r *Registry) EnsureUser(ctx context.Context, u *User) (int64, error) {

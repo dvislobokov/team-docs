@@ -68,7 +68,7 @@ func main() {
 	auth.NewHandler(authenticator).Register(api)
 	pages.NewHandler(pool, log).Register(api)
 	uploads.NewHandler(pool, log, cfg.MaxUploadBytes).Register(api)
-	backup.NewHandler(pool, log).Register(api, auth.RequireEditorStrict(authenticator, log))
+	backup.NewHandler(pool, log, registry.Reset).Register(api, auth.RequireEditorStrict(authenticator, log))
 
 	// MCP-эндпоинт (/mcp): генерация доков LLM-агентом → прямо в team-docs.
 	// MCP умеет писать, поэтому при включённой авторизации закрываем его теми же

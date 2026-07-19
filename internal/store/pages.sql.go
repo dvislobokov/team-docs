@@ -37,12 +37,13 @@ func (q *Queries) CountSiblings(ctx context.Context, arg CountSiblingsParams) (i
 }
 
 const createPage = `-- name: CreatePage :one
-INSERT INTO pages (parent_id, title, position, created_by, updated_by)
+INSERT INTO pages (parent_id, title, position, created_by, updated_by, project_id)
 VALUES ($1, $2, COALESCE(
     (SELECT MAX(position) + 1 FROM pages
      WHERE parent_id IS NOT DISTINCT FROM $1 AND deleted_at IS NULL),
     0
-), $3, $3)
+), $3, $3,
+    (SELECT id FROM projects WHERE key = 'main'))
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at
 `
 
@@ -64,6 +65,7 @@ type CreatePageRow struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+// Пока проекты не включены в UI, всё создаётся в дефолтном проекте 'main'.
 func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreatePageRow, error) {
 	row := q.db.QueryRow(ctx, createPage, arg.ParentID, arg.Title, arg.AuthorID)
 	var i CreatePageRow

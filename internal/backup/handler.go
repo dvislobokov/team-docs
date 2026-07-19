@@ -15,10 +15,13 @@ import (
 type Handler struct {
 	svc *Service
 	log *srog.Logger
+	// onImport дёргается после успешного импорта (сброс кэшей: таблица users
+	// пересоздана, закэшированные id невалидны). Может быть nil.
+	onImport func()
 }
 
-func NewHandler(pool *pgxpool.Pool, log *srog.Logger) *Handler {
-	return &Handler{svc: New(pool), log: log}
+func NewHandler(pool *pgxpool.Pool, log *srog.Logger, onImport func()) *Handler {
+	return &Handler{svc: New(pool), log: log, onImport: onImport}
 }
 
 // Register регистрирует роуты на группе /api. exportGuard закрывает выгрузку
@@ -50,6 +53,9 @@ func (h *Handler) importDump(c echo.Context) error {
 	if err := h.svc.Import(c.Request().Context(), &d); err != nil {
 		h.log.Error(err, "backup: import failed")
 		return echo.NewHTTPError(http.StatusBadRequest, "импорт не выполнен: "+err.Error())
+	}
+	if h.onImport != nil {
+		h.onImport()
 	}
 	return c.JSON(http.StatusOK, echo.Map{
 		"status":    "ok",

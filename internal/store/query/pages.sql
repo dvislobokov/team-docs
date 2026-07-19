@@ -14,12 +14,14 @@ LEFT JOIN users u ON u.id = p.updated_by
 WHERE p.id = $1 AND p.deleted_at IS NULL;
 
 -- name: CreatePage :one
-INSERT INTO pages (parent_id, title, position, created_by, updated_by)
+-- Пока проекты не включены в UI, всё создаётся в дефолтном проекте 'main'.
+INSERT INTO pages (parent_id, title, position, created_by, updated_by, project_id)
 VALUES ($1, $2, COALESCE(
     (SELECT MAX(position) + 1 FROM pages
      WHERE parent_id IS NOT DISTINCT FROM $1 AND deleted_at IS NULL),
     0
-), sqlc.narg(author_id), sqlc.narg(author_id))
+), sqlc.narg(author_id), sqlc.narg(author_id),
+    (SELECT id FROM projects WHERE key = 'main'))
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at;
 
 -- name: UpdatePage :one
