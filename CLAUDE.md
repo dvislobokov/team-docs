@@ -26,7 +26,14 @@ cd web && npm run lint  # oxlint
 cd web && npm run build # tsc -b + vite build (typecheck фронта)
 ```
 
-Тестов в проекте нет. CI (`.github/workflows/ci.yml`): oxlint + tsc/vite build, gofmt + go vet + dev-сборка + проверка актуальности sqlc, затем prod-бинарь.
+```bash
+go test ./...                          # юнит; интеграционные скипаются без TEAMDOCS_TEST_DSN
+go test ./internal/pages/ -run TestMove  # один тест
+# интеграционные локально: поднять compose-постгрес и задать
+#   TEAMDOCS_TEST_DSN=postgres://teamdocs:teamdocs@localhost:54329/teamdocs_test?sslmode=disable
+```
+
+CI (`.github/workflows/ci.yml`): oxlint + tsc/vite build; gofmt (без vendor) + go vet + dev-сборка + go test (интеграционные на postgres-сервисе) + проверка актуальности sqlc; затем prod-бинарь.
 
 ### Тестовая инфраструктура (docker-compose.test.yml)
 

@@ -39,8 +39,22 @@ jobs:
           retention-days: 7
 
   backend:
-    name: Бэкенд (vet + build + sqlc)
+    name: Бэкенд (vet + build + test + sqlc)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: teamdocs
+          POSTGRES_PASSWORD: teamdocs
+          POSTGRES_DB: teamdocs_test
+        ports:
+          - 54329:5432
+        options: >-
+          --health-cmd "pg_isready -U teamdocs -d teamdocs_test"
+          --health-interval 2s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
 
@@ -51,7 +65,7 @@ jobs:
 
       - name: gofmt
         run: |
-          unformatted=$(gofmt -l .)
+          unformatted=$(gofmt -l . | grep -v '^vendor/' || true)
           if [ -n "$unformatted" ]; then
             echo "Файлы не отформатированы gofmt:"; echo "$unformatted"; exit 1
           fi
@@ -60,6 +74,12 @@ jobs:
 
       # Dev-сборка (без тега prod — фронт не встраивается).
       - run: go build ./...
+
+      # Юнит + интеграционные (Postgres из services; DSN как в docker-compose.test.yml).
+      - name: go test
+        env:
+          TEAMDOCS_TEST_DSN: postgres://teamdocs:teamdocs@localhost:54329/teamdocs_test?sslmode=disable
+        run: go test ./...
 
       - name: sqlc сгенерирован из актуальных запросов
         uses: sqlc-dev/setup-sqlc@v4
