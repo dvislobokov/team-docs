@@ -2,32 +2,46 @@ package auth
 
 import (
 	"context"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"team-docs/internal/config"
 	"team-docs/internal/store"
 )
 
 // registryTTL — как долго не повторять upsert для одного subject.
 const registryTTL = 5 * time.Minute
 
-// Registry сопоставляет identity из токена с строкой в users: upsert по
-// subject c кэшем, чтобы не ходить в БД на каждый запрос.
+// Registry сопоставляет identity из токена/сессии со строкой в users: upsert
+// по subject c кэшем, чтобы не ходить в БД на каждый запрос. Заодно применяет
+// роль по умолчанию и бутстрап администраторов (auth.adminEmails).
 type Registry struct {
-	q  *store.Queries
-	mu sync.RWMutex
-	m  map[string]registryEntry
+	q           *store.Queries
+	defaultRole string
+	admins      map[string]bool // email или subject в нижнем регистре
+	mu          sync.RWMutex
+	m           map[string]registryEntry
 }
 
 type registryEntry struct {
 	id      int64
+	role    string
 	expires time.Time
 }
 
-func NewRegistry(pool *pgxpool.Pool) *Registry {
-	return &Registry{q: store.New(pool), m: map[string]registryEntry{}}
+func NewRegistry(pool *pgxpool.Pool, cfg config.AuthSettings) *Registry {
+	role := cfg.DefaultRole
+	if role != RoleReader && role != RoleEditor && role != RoleAdmin {
+		role = RoleEditor
+	}
+	admins := map[string]bool{}
+	for _, a := range cfg.AdminEmails {
+		admins[strings.ToLower(strings.TrimSpace(a))] = true
+	}
+	return &Registry{q: store.New(pool), defaultRole: role, admins: admins, m: map[string]registryEntry{}}
 }
 
 // Reset сбрасывает кэш subject→id. Вызывается после импорта бэкапа:
@@ -38,14 +52,18 @@ func (r *Registry) Reset() {
 	r.mu.Unlock()
 }
 
-// EnsureUser возвращает id пользователя в БД, создавая/обновляя запись при
-// необходимости. Профиль (имя/почта) обновляется не чаще registryTTL.
-func (r *Registry) EnsureUser(ctx context.Context, u *User) (int64, error) {
+func (r *Registry) isBootstrapAdmin(u *User) bool {
+	return r.admins[strings.ToLower(u.Email)] || r.admins[strings.ToLower(u.Subject)]
+}
+
+// EnsureUser возвращает id и роль пользователя в БД, создавая/обновляя запись
+// при необходимости. Профиль обновляется не чаще registryTTL.
+func (r *Registry) EnsureUser(ctx context.Context, u *User) (int64, string, error) {
 	r.mu.RLock()
 	e, ok := r.m[u.Subject]
 	r.mu.RUnlock()
 	if ok && time.Now().Before(e.expires) {
-		return e.id, nil
+		return e.id, e.role, nil
 	}
 
 	row, err := r.q.UpsertUser(ctx, store.UpsertUserParams{
@@ -53,13 +71,22 @@ func (r *Registry) EnsureUser(ctx context.Context, u *User) (int64, error) {
 		Username: u.Username,
 		Name:     u.Name,
 		Email:    u.Email,
+		Role:     r.defaultRole,
 	})
 	if err != nil {
-		return 0, err
+		return 0, "", err
+	}
+	role := row.Role
+	// Бутстрап админа: перечисленным в конфиге роль повышается при входе.
+	if role != RoleAdmin && r.isBootstrapAdmin(u) {
+		if err := r.q.SetUserRole(ctx, store.SetUserRoleParams{ID: row.ID, Role: RoleAdmin}); err != nil {
+			return 0, "", err
+		}
+		role = RoleAdmin
 	}
 
 	r.mu.Lock()
-	r.m[u.Subject] = registryEntry{id: row.ID, expires: time.Now().Add(registryTTL)}
+	r.m[u.Subject] = registryEntry{id: row.ID, role: role, expires: time.Now().Add(registryTTL)}
 	r.mu.Unlock()
-	return row.ID, nil
+	return row.ID, role, nil
 }

@@ -87,6 +87,17 @@ export interface Me {
   name: string;
   email: string;
   groups: string[] | null;
+  /** Роль встроенной авторизации: reader | editor | admin. */
+  role?: string;
+  isAdmin?: boolean;
+  /** Включена ли авторизация на бэке (для показа кнопки выхода). */
+  authEnabled?: boolean;
+}
+
+/** OAuth-провайдер (GET /auth/providers). */
+export interface AuthProvider {
+  key: string;
+  label: string;
 }
 
 /** Токены цвета «R G B» (как значения CSS-переменных --c-*). */

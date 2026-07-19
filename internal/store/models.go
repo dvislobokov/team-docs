@@ -78,4 +78,5 @@ type User struct {
 	Email      string             `json:"email"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+	Role       string             `json:"role"`
 }

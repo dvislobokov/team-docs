@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronsUpDown, ClipboardPaste, PanelLeftClose, Plus, Search, Trash2, Upload } from "lucide-react";
+import { ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Trash2, Upload } from "lucide-react";
 import { createPage } from "../api/pages";
 import { useAuth } from "../store/auth";
 import { useBranding } from "../store/branding";
@@ -152,7 +152,19 @@ export function Sidebar() {
         <span className="min-w-0 flex-1 truncate text-[13px] text-body" title={user.email || undefined}>
           {user.name || user.username || "Пользователь"}
         </span>
-        <ChevronsUpDown className="ml-auto h-4 w-4 shrink-0 text-faint" />
+        {user.authEnabled && user.authenticated && (
+          <button
+            type="button"
+            onClick={async () => {
+              await fetch("/auth/logout", { method: "POST" });
+              window.location.href = "/";
+            }}
+            className="ml-auto shrink-0 rounded-md p-1.5 text-faint transition hover:bg-line/60 hover:text-ink"
+            title="Выйти"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
+        )}
       </div>
     </aside>
   );

@@ -7,17 +7,79 @@ package store
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const listUsers = `-- name: ListUsers :many
+SELECT id, subject, username, name, email, role, created_at, last_seen_at
+FROM users
+ORDER BY name, id
+`
+
+type ListUsersRow struct {
+	ID         int64              `json:"id"`
+	Subject    string             `json:"subject"`
+	Username   string             `json:"username"`
+	Name       string             `json:"name"`
+	Email      string             `json:"email"`
+	Role       string             `json:"role"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+}
+
+func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
+	rows, err := q.db.Query(ctx, listUsers)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListUsersRow{}
+	for rows.Next() {
+		var i ListUsersRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Subject,
+			&i.Username,
+			&i.Name,
+			&i.Email,
+			&i.Role,
+			&i.CreatedAt,
+			&i.LastSeenAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setUserRole = `-- name: SetUserRole :exec
+UPDATE users SET role = $2 WHERE id = $1
+`
+
+type SetUserRoleParams struct {
+	ID   int64  `json:"id"`
+	Role string `json:"role"`
+}
+
+func (q *Queries) SetUserRole(ctx context.Context, arg SetUserRoleParams) error {
+	_, err := q.db.Exec(ctx, setUserRole, arg.ID, arg.Role)
+	return err
+}
+
 const upsertUser = `-- name: UpsertUser :one
-INSERT INTO users (subject, username, name, email)
-VALUES ($1, $2, $3, $4)
+INSERT INTO users (subject, username, name, email, role)
+VALUES ($1, $2, $3, $4, $5)
 ON CONFLICT (subject) DO UPDATE
 SET username     = EXCLUDED.username,
     name         = EXCLUDED.name,
     email        = EXCLUDED.email,
     last_seen_at = now()
-RETURNING id, subject, username, name, email, created_at, last_seen_at
+RETURNING id, subject, username, name, email, role, created_at, last_seen_at
 `
 
 type UpsertUserParams struct {
@@ -25,24 +87,39 @@ type UpsertUserParams struct {
 	Username string `json:"username"`
 	Name     string `json:"name"`
 	Email    string `json:"email"`
+	Role     string `json:"role"`
 }
 
-// Регистрирует/обновляет пользователя по subject из JWT (или "dev").
-// Вызывается из auth-middleware (с кэшем, не на каждый запрос).
-func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (User, error) {
+type UpsertUserRow struct {
+	ID         int64              `json:"id"`
+	Subject    string             `json:"subject"`
+	Username   string             `json:"username"`
+	Name       string             `json:"name"`
+	Email      string             `json:"email"`
+	Role       string             `json:"role"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	LastSeenAt pgtype.Timestamptz `json:"last_seen_at"`
+}
+
+// Регистрирует/обновляет пользователя по subject из JWT/OAuth (или "dev").
+// Роль задаётся только при создании (defaultRole) — назначенную админом
+// роль upsert не перетирает. Вызывается из auth-middleware (с кэшем).
+func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (UpsertUserRow, error) {
 	row := q.db.QueryRow(ctx, upsertUser,
 		arg.Subject,
 		arg.Username,
 		arg.Name,
 		arg.Email,
+		arg.Role,
 	)
-	var i User
+	var i UpsertUserRow
 	err := row.Scan(
 		&i.ID,
 		&i.Subject,
 		&i.Username,
 		&i.Name,
 		&i.Email,
+		&i.Role,
 		&i.CreatedAt,
 		&i.LastSeenAt,
 	)

@@ -91,6 +91,50 @@ type AuthSettings struct {
 	// PublicRead — при true неаутентифицированные пользователи могут читать (GET),
 	// но не изменять данные. false → любое обращение к API требует токен.
 	PublicRead bool `yaml:"publicRead" default:"true"`
+
+	// --- Встроенный OAuth (ROADMAP §8; решение: без обязательного IAM) ---
+	// Работает параллельно с проверкой JWT из заголовка: middleware сначала
+	// пробует cookie-сессию, затем заголовок.
+
+	// PublicURL — внешний адрес приложения для redirect_uri
+	// (например https://docs.example.com). Обязателен для OAuth-провайдеров.
+	PublicURL string `yaml:"publicUrl" default:""`
+	// SessionSecret подписывает cookie-сессии (HS256). Пусто → случайный на
+	// старте: сессии слетают при рестарте — в проде задать явно.
+	SessionSecret string `yaml:"sessionSecret" default:""`
+	// SessionTTLHours — время жизни сессии (по умолчанию 30 дней).
+	SessionTTLHours int `yaml:"sessionTtlHours" default:"720"`
+	// DefaultRole — роль новых пользователей: reader | editor.
+	DefaultRole string `yaml:"defaultRole" default:"editor"`
+	// AdminEmails — бутстрап администраторов: пользователю с таким email
+	// (или subject) роль admin проставляется при входе.
+	AdminEmails []string `yaml:"adminEmails"`
+
+	Providers ProvidersSettings `yaml:"providers"`
+}
+
+// ProvidersSettings — клиенты OAuth-провайдеров. Провайдер считается
+// настроенным, если задан clientId.
+type ProvidersSettings struct {
+	Google OAuthClientSettings `yaml:"google"`
+	Yandex OAuthClientSettings `yaml:"yandex"`
+	VK     OAuthClientSettings `yaml:"vk"`
+	Apple  AppleClientSettings `yaml:"apple"`
+}
+
+type OAuthClientSettings struct {
+	ClientID     string `yaml:"clientId" default:""`
+	ClientSecret string `yaml:"clientSecret" default:""`
+}
+
+// AppleClientSettings — Sign in with Apple: client_secret не статический,
+// а ES256-JWT, подписываемый ключом .p8 (генерируется на лету).
+type AppleClientSettings struct {
+	ClientID string `yaml:"clientId" default:""` // Services ID
+	TeamID   string `yaml:"teamId" default:""`
+	KeyID    string `yaml:"keyId" default:""`
+	// PrivateKey — содержимое .p8 (PEM, PKCS#8), можно через env с \n.
+	PrivateKey string `yaml:"privateKey" default:""`
 }
 
 // Load читает конфигурацию из файла (опционально) и переменных окружения.

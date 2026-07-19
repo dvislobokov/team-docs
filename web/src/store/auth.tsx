@@ -12,7 +12,7 @@ import {
 } from "react";
 import { ApiError } from "../api/client";
 import { getMe } from "../api/auth";
-import type { Me } from "../api/types";
+import type { AuthProvider as OAuthProvider, Me } from "../api/types";
 
 type Status = "loading" | "ready" | "unauthorized" | "error";
 
@@ -48,16 +48,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return <FullScreen>Загрузка…</FullScreen>;
   }
   if (status === "unauthorized") {
-    return (
-      <FullScreen>
-        <div className="text-[46px]">🔒</div>
-        <h1 className="mt-4 font-display text-[26px] font-500 text-ink">Требуется авторизация</h1>
-        <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted">
-          Доступ к team-docs выдаёт корпоративный вход. Откройте приложение через
-          него — или обратитесь к администратору.
-        </p>
-      </FullScreen>
-    );
+    return <LoginScreen />;
   }
   if (status === "error") {
     return (
@@ -70,6 +61,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+// Экран входа: кнопки настроенных OAuth-провайдеров (GET /auth/providers);
+// если их нет — приложение стоит за IAM-прокси, показываем подсказку.
+function LoginScreen() {
+  const [providers, setProviders] = useState<OAuthProvider[] | null>(null);
+
+  useEffect(() => {
+    fetch("/auth/providers")
+      .then((r) => (r.ok ? r.json() : []))
+      .then(setProviders)
+      .catch(() => setProviders([]));
+  }, []);
+
+  return (
+    <FullScreen>
+      <div className="text-[46px]">🔒</div>
+      <h1 className="mt-4 font-display text-[26px] font-500 text-ink">Вход в team-docs</h1>
+      {providers && providers.length > 0 ? (
+        <div className="mt-6 flex w-full max-w-[280px] flex-col gap-2">
+          {providers.map((p) => (
+            <a
+              key={p.key}
+              href={`/auth/login/${p.key}`}
+              className="rounded-lg border border-line bg-card px-4 py-2.5 text-[14px] font-500 text-ink transition hover:border-faint hover:bg-line/40"
+            >
+              Войти через {p.label}
+            </a>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted">
+          {providers === null
+            ? "Загрузка…"
+            : "Доступ к team-docs выдаёт корпоративный вход. Откройте приложение через него — или обратитесь к администратору."}
+        </p>
+      )}
+    </FullScreen>
+  );
 }
 
 function FullScreen({ children }: { children: ReactNode }) {

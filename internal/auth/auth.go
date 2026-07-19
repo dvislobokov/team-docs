@@ -3,16 +3,21 @@ package auth
 import (
 	"errors"
 	"fmt"
+	"sync"
 
 	"github.com/golang-jwt/jwt/v5"
 
 	"team-docs/internal/config"
 )
 
-// Authenticator проверяет JWT согласно конфигу (JWKS/RS256 либо HMAC/HS256).
+// Authenticator проверяет JWT согласно конфигу (JWKS/RS256 либо HMAC/HS256)
+// и обслуживает встроенные cookie-сессии (OAuth-логин).
 type Authenticator struct {
 	cfg  config.AuthSettings
 	jwks *jwksCache
+
+	randOnce   sync.Once
+	randSecret []byte
 }
 
 // New создаёт Authenticator. При Enabled=true требуется JWKS-URL или HMAC-секрет.
@@ -35,24 +40,34 @@ func (a *Authenticator) Enabled() bool { return a.cfg.Enabled }
 // PublicRead — разрешено ли анонимное чтение (GET) при включённой авторизации.
 func (a *Authenticator) PublicRead() bool { return a.cfg.PublicRead }
 
-// CanEdit сообщает, вправе ли пользователь изменять контент (запись). Без
-// настроенных EditorGroups редактировать может любой аутентифицированный;
-// иначе требуется принадлежность к одной из групп/ролей.
+// CanEdit сообщает, вправе ли пользователь изменять контент (запись).
+// Приоритет: EditorGroups (IAM-режим, группы из токена) → роль из БД
+// (встроенный режим: reader не пишет, editor/admin пишут). Пустая роль
+// (Registry недоступен) трактуется как editor — прежнее поведение.
 func (a *Authenticator) CanEdit(u *User) bool {
 	if u == nil {
 		return false
 	}
-	if len(a.cfg.EditorGroups) == 0 {
-		return true
-	}
-	for _, g := range u.Groups {
-		for _, e := range a.cfg.EditorGroups {
-			if g == e {
-				return true
+	if len(a.cfg.EditorGroups) > 0 {
+		for _, g := range u.Groups {
+			for _, e := range a.cfg.EditorGroups {
+				if g == e {
+					return true
+				}
 			}
 		}
+		return false
 	}
-	return false
+	return u.Role != RoleReader
+}
+
+// IsAdmin — гард административных операций. В открытом режиме (auth off)
+// админка доступна всем: локальная разработка.
+func (a *Authenticator) IsAdmin(u *User) bool {
+	if !a.Enabled() {
+		return true
+	}
+	return u != nil && u.Role == RoleAdmin
 }
 
 // keyfunc выбирает ключ по алгоритму токена (HMAC-секрет или RSA-ключ из JWKS).

@@ -25,6 +25,9 @@ func (h *Handler) me(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{
 		"authenticated": true,
 		"canEdit":       !h.a.Enabled() || h.a.CanEdit(u),
+		"isAdmin":       h.a.IsAdmin(u),
+		"authEnabled":   h.a.Enabled(),
+		"role":          u.Role,
 		"username":      u.Username,
 		"name":          u.Name,
 		"email":         u.Email,

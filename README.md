@@ -94,12 +94,23 @@ branding:
 # прокидывает JWT; здесь мы его валидируем.
 auth:
   enabled: false
+  # --- режим 1: за IAM-прокси (валидация JWT из заголовка) ---
   # jwksUrl: "http://keycloak:8080/realms/teamdocs/protocol/openid-connect/certs"
   # issuer:  "http://keycloak:8080/realms/teamdocs"
   # hmacSecret: ""      # альтернатива JWKS для HS256
   publicRead: true       # анонимное чтение (GET); запись всегда требует вход
   editorGroups: []       # пусто → писать может любой вошедший; иначе — только
                          # члены этих групп/ролей (claim groups или realm_access.roles)
+  # --- режим 2: встроенный OAuth-логин (без IAM; работают одновременно) ---
+  # publicUrl: "https://docs.example.com"   # для redirect_uri
+  # sessionSecret: "случайная-строка"        # подпись cookie-сессий (задать в проде!)
+  # defaultRole: editor                      # роль новых пользователей: reader | editor
+  # adminEmails: ["boss@example.com"]        # бутстрап админов
+  # providers:
+  #   google: { clientId: "...", clientSecret: "..." }
+  #   yandex: { clientId: "...", clientSecret: "..." }
+  #   vk:     { clientId: "...", clientSecret: "..." }
+  #   apple:  { clientId: "...", teamId: "...", keyId: "...", privateKey: "..." } # .p8
 ```
 
 Схема БД применяется автоматически при старте (миграции встроены в бинарь).

@@ -57,8 +57,17 @@ func main() {
 
 	srv := server.New(cfg, log, pool)
 
-	// Реестр пользователей: upsert identity в users (авторство страниц).
-	registry := auth.NewRegistry(pool)
+	// Реестр пользователей: upsert identity в users (авторство, роли,
+	// бутстрап админов из auth.adminEmails).
+	registry := auth.NewRegistry(pool, cfg.Auth)
+
+	// Встроенный OAuth-логин (/auth/*): вне /api и auth-middleware.
+	providers := auth.BuildProviders(cfg.Auth)
+	auth.NewOAuthHandler(authenticator, registry, log, cfg.Auth.PublicURL, providers).
+		Register(srv.Echo())
+	if len(providers) > 0 {
+		log.Information("auth: builtin OAuth providers enabled: {Count}", len(providers))
+	}
 
 	// Все /api-роуты (кроме /api/health) за middleware авторизации.
 	// Middleware — identity; RequireEditor — гард на запись (см. internal/auth).

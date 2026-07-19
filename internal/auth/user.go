@@ -6,7 +6,15 @@ import "github.com/labstack/echo/v4"
 
 const contextKey = "auth.user"
 
-// User — identity текущего запроса (из claims токена либо dev-пользователь).
+// Роли встроенной авторизации (users.role).
+const (
+	RoleReader = "reader"
+	RoleEditor = "editor"
+	RoleAdmin  = "admin"
+)
+
+// User — identity текущего запроса (из claims токена, cookie-сессии либо
+// dev-пользователь).
 type User struct {
 	// ID — ключ строки в users; проставляется middleware после upsert
 	// (0, если запись не удалась — авторство тогда не пишется).
@@ -16,6 +24,8 @@ type User struct {
 	Name     string   `json:"name"`
 	Email    string   `json:"email"`
 	Groups   []string `json:"groups"`
+	// Role — роль из users (reader/editor/admin); проставляется middleware.
+	Role string `json:"role"`
 }
 
 // UserID возвращает id пользователя из контекста для колонок авторства:

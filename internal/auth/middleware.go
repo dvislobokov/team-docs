@@ -22,6 +22,13 @@ func Middleware(a *Authenticator, reg *Registry, log *srog.Logger) echo.Middlewa
 				return next(c)
 			}
 
+			// 1) Встроенная cookie-сессия (OAuth-логин).
+			if u, err := a.sessionUser(c); err == nil {
+				setUser(c, resolve(c, reg, u, log))
+				return next(c)
+			}
+
+			// 2) JWT из заголовка (IAM-прокси).
 			raw := extractToken(c, a.cfg.Header)
 			if raw == "" {
 				if a.PublicRead() {
@@ -40,18 +47,39 @@ func Middleware(a *Authenticator, reg *Registry, log *srog.Logger) echo.Middlewa
 	}
 }
 
-// resolve проставляет пользователю id из users (upsert через Registry).
+// resolve проставляет пользователю id и роль из users (upsert через Registry).
 func resolve(c echo.Context, reg *Registry, u *User, log *srog.Logger) *User {
 	if reg == nil {
 		return u
 	}
-	id, err := reg.EnsureUser(c.Request().Context(), u)
+	id, role, err := reg.EnsureUser(c.Request().Context(), u)
 	if err != nil {
 		log.Error(err, "auth: user registry upsert failed for {Subject}", u.Subject)
 		return u
 	}
 	u.ID = id
+	u.Role = role
 	return u
+}
+
+// RequireAdmin — гард административных операций (настройки, роли).
+// В открытом режиме — no-op (локальная разработка).
+func RequireAdmin(a *Authenticator, log *srog.Logger) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			if !a.Enabled() {
+				return next(c)
+			}
+			u, ok := FromContext(c)
+			if !ok || u == nil {
+				return echo.NewHTTPError(http.StatusUnauthorized, "authentication required")
+			}
+			if !a.IsAdmin(u) {
+				return echo.NewHTTPError(http.StatusForbidden, "admin role required")
+			}
+			return next(c)
+		}
+	}
 }
 
 // RequireEditor — гард на запись: методы, изменяющие данные (POST/PUT/PATCH/
