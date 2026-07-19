@@ -8,6 +8,16 @@ import {
   type AdminUser,
   type Setting,
 } from "../api/admin";
+import {
+  createProject,
+  listMembers,
+  listProjects,
+  removeMember,
+  setMember,
+  updateProject,
+  type Project,
+  type ProjectMember,
+} from "../api/projects";
 import { relativeTime } from "../lib/format";
 import { useAuth } from "../store/auth";
 import { useToast } from "../store/toast";
@@ -68,6 +78,8 @@ export function AdminScreen() {
 
         <SettingsSection />
 
+        <ProjectsSection />
+
         <h2 className="mt-10 text-[15px] font-600 text-ink">Пользователи и роли</h2>
         <p className="mt-1 text-[13px] text-muted">
           Читатель — только просмотр; редактор — правка страниц; администратор —
@@ -111,6 +123,203 @@ export function AdminScreen() {
           </table>
         </div>
       </section>
+    </>
+  );
+}
+
+const VISIBILITIES = [
+  { value: "public", label: "Публичный" },
+  { value: "internal", label: "Внутренний" },
+  { value: "private", label: "Приватный" },
+];
+
+// Проекты: создание, видимость, участники с ролями (§10).
+function ProjectsSection() {
+  const toast = useToast();
+  const [items, setItems] = useState<Project[] | null>(null);
+  const [newKey, setNewKey] = useState("");
+  const [newName, setNewName] = useState("");
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [members, setMembers] = useState<ProjectMember[]>([]);
+  const [allUsers, setAllUsers] = useState<AdminUser[]>([]);
+  const [addUserId, setAddUserId] = useState("");
+
+  const load = () => {
+    listProjects()
+      .then(setItems)
+      .catch(() => setItems([]));
+  };
+  useEffect(load, []);
+  useEffect(() => {
+    listUsers().then(setAllUsers).catch(() => undefined);
+  }, []);
+
+  const create = async () => {
+    if (!newKey || !newName) return;
+    try {
+      await createProject({ key: newKey, name: newName });
+      setNewKey("");
+      setNewName("");
+      toast("Проект создан", "success");
+      load();
+    } catch (e) {
+      toast(e instanceof Error ? e.message : "Не удалось создать проект", "error");
+    }
+  };
+
+  const changeVisibility = async (p: Project, visibility: string) => {
+    try {
+      await updateProject(p.id, { visibility });
+      setItems((list) => list?.map((x) => (x.id === p.id ? { ...x, visibility: visibility as Project["visibility"] } : x)) ?? null);
+      toast(`Видимость обновлена: ${p.name}`, "success");
+    } catch {
+      toast("Не удалось обновить проект", "error");
+    }
+  };
+
+  const toggleMembers = async (p: Project) => {
+    if (openId === p.id) {
+      setOpenId(null);
+      return;
+    }
+    setMembers(await listMembers(p.id).catch(() => []));
+    setOpenId(p.id);
+  };
+
+  const addMember = async (p: Project) => {
+    const userId = Number(addUserId);
+    if (!userId) return;
+    await setMember(p.id, userId, "editor");
+    setMembers(await listMembers(p.id).catch(() => []));
+    setAddUserId("");
+  };
+
+  const changeMemberRole = async (p: Project, m: ProjectMember, role: string) => {
+    await setMember(p.id, m.userId, role);
+    setMembers((list) => list.map((x) => (x.userId === m.userId ? { ...x, role } : x)));
+  };
+
+  const drop = async (p: Project, m: ProjectMember) => {
+    await removeMember(p.id, m.userId);
+    setMembers((list) => list.filter((x) => x.userId !== m.userId));
+  };
+
+  return (
+    <>
+      <h2 className="mt-10 text-[15px] font-600 text-ink">Проекты</h2>
+      <p className="mt-1 text-[13px] text-muted">
+        Публичный — читают все; внутренний — все вошедшие; приватный — только
+        участники. Роль участника действует вместо глобальной внутри проекта.
+      </p>
+
+      <div className="mt-4 flex flex-col gap-2">
+        {items?.map((p) => (
+          <div key={p.id} className="rounded-xl border border-line px-4 py-3">
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1 truncate text-[14px] text-ink">
+                {p.icon ? `${p.icon} ` : ""}{p.name}{" "}
+                <span className="font-mono text-[11px] text-faint">{p.key}</span>
+              </span>
+              <select
+                value={p.visibility}
+                onChange={(e) => changeVisibility(p, e.target.value)}
+                className="rounded-md border border-line bg-card px-2 py-1 text-[12px] text-body outline-none hover:border-faint"
+              >
+                {VISIBILITIES.map((v) => (
+                  <option key={v.value} value={v.value}>{v.label}</option>
+                ))}
+              </select>
+              <button
+                type="button"
+                onClick={() => toggleMembers(p)}
+                className="rounded-md border border-line px-2.5 py-1 text-[12px] text-body transition hover:border-faint"
+              >
+                Участники
+              </button>
+            </div>
+
+            {openId === p.id && (
+              <div className="mt-3 border-t border-line/60 pt-3">
+                {members.length === 0 && (
+                  <p className="text-[12px] text-faint">
+                    Участников нет — действуют глобальные роли (для приватного проекта это «нет доступа»).
+                  </p>
+                )}
+                {members.map((m) => (
+                  <div key={m.userId} className="flex items-center gap-2 py-1">
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-body">
+                      {m.name || m.username} <span className="text-faint">{m.email}</span>
+                    </span>
+                    <select
+                      value={m.role}
+                      onChange={(e) => changeMemberRole(p, m, e.target.value)}
+                      className="rounded-md border border-line bg-card px-2 py-0.5 text-[12px] text-body outline-none"
+                    >
+                      {ROLES.map((r) => (
+                        <option key={r.value} value={r.value}>{r.label}</option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => drop(p, m)}
+                      className="rounded px-1.5 text-[12px] text-red-500 hover:bg-red-500/10"
+                    >
+                      Убрать
+                    </button>
+                  </div>
+                ))}
+                <div className="mt-2 flex items-center gap-2">
+                  <select
+                    value={addUserId}
+                    onChange={(e) => setAddUserId(e.target.value)}
+                    className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-1 text-[12px] text-body outline-none"
+                  >
+                    <option value="">Добавить участника…</option>
+                    {allUsers
+                      .filter((u) => !members.some((m) => m.userId === u.id))
+                      .map((u) => (
+                        <option key={u.id} value={u.id}>
+                          {u.name || u.username} ({u.email || u.subject})
+                        </option>
+                      ))}
+                  </select>
+                  <button
+                    type="button"
+                    onClick={() => addMember(p)}
+                    disabled={!addUserId}
+                    className="rounded-md border border-line px-2.5 py-1 text-[12px] text-body transition hover:border-faint disabled:opacity-50"
+                  >
+                    Добавить
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        <div className="flex items-center gap-2">
+          <input
+            value={newKey}
+            onChange={(e) => setNewKey(e.target.value)}
+            placeholder="ключ (латиница)"
+            className="w-[160px] rounded-md border border-line bg-card px-2.5 py-1.5 font-mono text-[12px] text-ink outline-none focus:border-accent"
+          />
+          <input
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="Название проекта"
+            className="min-w-0 flex-1 rounded-md border border-line bg-card px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent"
+          />
+          <button
+            type="button"
+            onClick={create}
+            disabled={!newKey || !newName}
+            className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-500 text-white transition hover:bg-accent/90 disabled:opacity-50"
+          >
+            Создать
+          </button>
+        </div>
+      </div>
     </>
   );
 }

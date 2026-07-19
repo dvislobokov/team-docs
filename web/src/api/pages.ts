@@ -13,8 +13,9 @@ import type {
   UploadResponse,
 } from "./types";
 
-export function getTree(signal?: AbortSignal): Promise<PageTreeNode[]> {
-  return request<PageTreeNode[]>("/pages/tree", { signal });
+export function getTree(projectId?: number, signal?: AbortSignal): Promise<PageTreeNode[]> {
+  const qs = projectId ? `?project=${projectId}` : "";
+  return request<PageTreeNode[]>(`/pages/tree${qs}`, { signal });
 }
 
 export function getPage(id: number, signal?: AbortSignal): Promise<Page> {

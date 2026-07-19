@@ -17,7 +17,7 @@ import { TreeNav } from "./TreeNav";
 export function Sidebar() {
   const { setOpen: setPaletteOpen } = usePalette();
   const { open, setOpen } = useSidebar();
-  const { reload } = useTree();
+  const { reload, projects, project, setProject } = useTree();
   const user = useAuth();
   const branding = useBranding();
   const navigate = useNavigate();
@@ -35,7 +35,11 @@ export function Sidebar() {
     if (busy) return;
     setBusy(true);
     try {
-      const page = await createPage({ parentId: null, title: "Новая страница" });
+      const page = await createPage({
+        parentId: null,
+        title: "Новая страница",
+        projectId: project?.id,
+      });
       await reload();
       navigate(`/pages/${page.id}`, { state: { isNew: true } });
     } finally {
@@ -94,10 +98,28 @@ export function Sidebar() {
 
       {/* дерево */}
       <nav data-tour="tree" className="scroll flex-1 overflow-y-auto px-2 pb-4 text-[15px]">
-        <div className="flex items-center justify-between px-2 pb-1 pt-3">
-          <span className="text-[11px] font-600 uppercase tracking-[0.08em] text-faint">
-            Пространство
-          </span>
+        <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-3">
+          {projects.length > 1 ? (
+            <select
+              value={project?.key ?? ""}
+              onChange={(e) => {
+                const p = projects.find((x) => x.key === e.target.value);
+                if (p) setProject(p);
+              }}
+              title="Проект"
+              className="min-w-0 flex-1 cursor-pointer truncate rounded-md border-0 bg-transparent py-0.5 text-[11px] font-600 uppercase tracking-[0.08em] text-faint outline-none transition hover:text-ink"
+            >
+              {projects.map((p) => (
+                <option key={p.key} value={p.key}>
+                  {p.icon ? `${p.icon} ` : ""}{p.name}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <span className="text-[11px] font-600 uppercase tracking-[0.08em] text-faint">
+              {project?.name ?? "Пространство"}
+            </span>
+          )}
           {user.canEdit && (
             <span className="flex items-center gap-0.5">
               <ImportMarkdown

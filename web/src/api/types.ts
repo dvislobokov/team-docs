@@ -32,6 +32,8 @@ export interface PageTreeNode {
 export interface CreatePageRequest {
   parentId: number | null;
   title: string;
+  /** Проект для корневых страниц (по умолчанию 'main'). */
+  projectId?: number;
 }
 
 export interface UpdatePageRequest {
