@@ -11,6 +11,8 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 
+	"team-docs/internal/auth"
+	"team-docs/internal/projects"
 	"team-docs/internal/store"
 )
 
@@ -20,13 +22,14 @@ const defaultMaxBytes = 20 << 20 // 20 MiB
 // хранится в БД (BYTEA), диск не используется.
 type Handler struct {
 	q   *store.Queries
+	a   *auth.Authenticator
 	log *srog.Logger
 	// maxBytes — динамический лимит (настройки в БД, §9).
 	maxBytes func() int64
 }
 
-func NewHandler(pool *pgxpool.Pool, log *srog.Logger, maxBytes func() int64) *Handler {
-	return &Handler{q: store.New(pool), log: log, maxBytes: maxBytes}
+func NewHandler(pool *pgxpool.Pool, a *auth.Authenticator, log *srog.Logger, maxBytes func() int64) *Handler {
+	return &Handler{q: store.New(pool), a: a, log: log, maxBytes: maxBytes}
 }
 
 func (h *Handler) Register(api *echo.Group) {
@@ -93,7 +96,31 @@ func (h *Handler) serve(c echo.Context) error {
 	if err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid id")
 	}
-	rec, err := h.q.GetFile(c.Request().Context(), id)
+	ctx := c.Request().Context()
+
+	// Проектный гард (§10): файл принадлежит проекту страницы, где он
+	// используется. Не привязанный ни к одной странице (свежезагруженный) —
+	// виден только пользователям с правом правки.
+	u, _ := auth.FromContext(c)
+	projectID, err := h.q.FindFileProject(ctx, id.String())
+	switch {
+	case err == nil:
+		role, rerr := projects.RoleForID(ctx, h.q, h.a, u, projectID)
+		if rerr != nil {
+			return h.fail(c, rerr, "resolve file project role")
+		}
+		if !projects.CanRead(role) {
+			return echo.NewHTTPError(http.StatusNotFound, "file not found")
+		}
+	case errors.Is(err, pgx.ErrNoRows):
+		if h.a.Enabled() && (u == nil || !h.a.CanEdit(u)) {
+			return echo.NewHTTPError(http.StatusNotFound, "file not found")
+		}
+	default:
+		return h.fail(c, err, "find file project")
+	}
+
+	rec, err := h.q.GetFile(ctx, id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusNotFound, "file not found")
 	}

@@ -55,12 +55,14 @@ type handlers struct {
 
 func (h *handlers) register(s *server.MCPServer) {
 	s.AddTool(mcp.NewTool("list_pages",
-		mcp.WithDescription("Дерево всех страниц (id, parentId, title, icon, position). Используй, чтобы понять структуру и выбрать родителя.")),
+		mcp.WithDescription("Дерево страниц проекта (id, parentId, title, icon, position). Используй, чтобы понять структуру и выбрать родителя."),
+		mcp.WithString("project", mcp.Description("Ключ проекта (опц.; по умолчанию main)"))),
 		h.listPages)
 
 	s.AddTool(mcp.NewTool("search_pages",
 		mcp.WithDescription("Полнотекстовый поиск по страницам: id, title, сниппет."),
-		mcp.WithString("query", mcp.Required(), mcp.Description("Поисковый запрос"))),
+		mcp.WithString("query", mcp.Required(), mcp.Description("Поисковый запрос")),
+		mcp.WithString("project", mcp.Description("Ключ проекта (опц.; по умолчанию main)"))),
 		h.searchPages)
 
 	s.AddTool(mcp.NewTool("get_page",
@@ -72,7 +74,8 @@ func (h *handlers) register(s *server.MCPServer) {
 		mcp.WithDescription("Создать страницу из Markdown. Возвращает id и ссылку."),
 		mcp.WithString("title", mcp.Required(), mcp.Description("Заголовок")),
 		mcp.WithString("markdown", mcp.Required(), mcp.Description("Содержимое в Markdown")),
-		mcp.WithNumber("parent_id", mcp.Description("ID родительской страницы (опц.; иначе корень)"))),
+		mcp.WithNumber("parent_id", mcp.Description("ID родительской страницы (опц.; иначе корень)")),
+		mcp.WithString("project", mcp.Description("Ключ проекта для корневой страницы (опц.; по умолчанию main)"))),
 		h.createPage)
 
 	s.AddTool(mcp.NewTool("update_page",
@@ -138,19 +141,19 @@ func optParentID(r mcp.CallToolRequest) *int64 {
 
 // --- tools ---
 
-// mainProjectID — MCP работает в дефолтном проекте 'main' (доверенная
-// интеграция; проектный параметр — задел ROADMAP §10).
-func (h *handlers) mainProjectID(ctx context.Context) (int64, error) {
-	p, err := h.q.GetProjectByKey(ctx, "main")
+// projectID резолвит параметр project (ключ проекта; по умолчанию 'main').
+// MCP — доверенная интеграция: проектные роли не применяются (см. README).
+func (h *handlers) projectID(ctx context.Context, r mcp.CallToolRequest) (int64, error) {
+	p, err := h.q.GetProjectByKey(ctx, r.GetString("project", "main"))
 	return p.ID, err
 }
 
-func (h *handlers) listPages(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	mainID, err := h.mainProjectID(ctx)
+func (h *handlers) listPages(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	projID, err := h.projectID(ctx, r)
 	if err != nil {
-		return h.fail("list_pages", err)
+		return mcp.NewToolResultError("проект не найден"), nil
 	}
-	rows, err := h.q.GetPageTree(ctx, mainID)
+	rows, err := h.q.GetPageTree(ctx, projID)
 	if err != nil {
 		return h.fail("list_pages", err)
 	}
@@ -173,11 +176,11 @@ func (h *handlers) searchPages(ctx context.Context, r mcp.CallToolRequest) (*mcp
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	mainID, err := h.mainProjectID(ctx)
+	projID, err := h.projectID(ctx, r)
 	if err != nil {
-		return h.fail("search_pages", err)
+		return mcp.NewToolResultError("проект не найден"), nil
 	}
-	rows, err := h.q.SearchPages(ctx, store.SearchPagesParams{PlaintoTsquery: q, ProjectIds: []int64{mainID}})
+	rows, err := h.q.SearchPages(ctx, store.SearchPagesParams{PlaintoTsquery: q, ProjectIds: []int64{projID}})
 	if err != nil {
 		return h.fail("search_pages", err)
 	}
@@ -230,12 +233,19 @@ func (h *handlers) createPage(ctx context.Context, r mcp.CallToolRequest) (*mcp.
 		return h.fail("create_page: markdown", err)
 	}
 
-	mainID, err := h.mainProjectID(ctx)
-	if err != nil {
-		return h.fail("create_page", err)
+	// Проект: у вложенной страницы — от родителя; у корневой — из параметра.
+	var projID int64
+	if parent := optParentID(r); parent != nil {
+		pid, err := h.q.GetPageProject(ctx, *parent)
+		if err != nil {
+			return mcp.NewToolResultError("родительская страница не найдена"), nil
+		}
+		projID = pid
+	} else if projID, err = h.projectID(ctx, r); err != nil {
+		return mcp.NewToolResultError("проект не найден"), nil
 	}
 	created, err := h.q.CreatePage(ctx, store.CreatePageParams{
-		ParentID: optParentID(r), Title: title, ProjectID: mainID,
+		ParentID: optParentID(r), Title: title, ProjectID: projID,
 	})
 	if err != nil {
 		return h.fail("create_page", err)

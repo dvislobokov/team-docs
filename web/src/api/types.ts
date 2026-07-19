@@ -18,6 +18,8 @@ export interface Page {
   updatedAt: string; // RFC3339
   /** Имя последнего редактора; null для страниц без авторства (старые, MCP). */
   updatedByName: string | null;
+  /** Право правки текущего пользователя в проекте страницы (§10). */
+  canEdit: boolean;
 }
 
 /** Узел плоского списка дерева (GET /api/pages/tree). */

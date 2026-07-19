@@ -90,7 +90,7 @@ func main() {
 	settings.NewHandler(settingsSvc).Register(adminGroup)
 	pages.NewHandler(pool, authenticator, log).Register(api)
 	projects.NewHandler(pool, authenticator, log).Register(api)
-	uploads.NewHandler(pool, log, settingsSvc.MaxUploadBytes).Register(api)
+	uploads.NewHandler(pool, authenticator, log, settingsSvc.MaxUploadBytes).Register(api)
 	backup.NewHandler(pool, log, registry.Reset).Register(api, auth.RequireEditorStrict(authenticator, log))
 
 	// MCP-эндпоинт (/mcp): генерация доков LLM-агентом → прямо в team-docs.

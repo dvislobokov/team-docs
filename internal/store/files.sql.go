@@ -12,6 +12,22 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const findFileProject = `-- name: FindFileProject :one
+SELECT project_id
+FROM pages
+WHERE deleted_at IS NULL
+  AND content::text LIKE '%' || $1::text || '%'
+LIMIT 1
+`
+
+// Проект файла — по живой странице, в контенте которой встречается его UUID.
+func (q *Queries) FindFileProject(ctx context.Context, fileID string) (int64, error) {
+	row := q.db.QueryRow(ctx, findFileProject, fileID)
+	var project_id int64
+	err := row.Scan(&project_id)
+	return project_id, err
+}
+
 const getFile = `-- name: GetFile :one
 SELECT id, page_id, filename, mime, size, content, created_at
 FROM files

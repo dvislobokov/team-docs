@@ -120,7 +120,7 @@ export function Sidebar() {
               {project?.name ?? "Пространство"}
             </span>
           )}
-          {user.canEdit && (
+          {user.canEdit && project?.myRole !== "reader" && (
             <span className="flex items-center gap-0.5">
               <ImportMarkdown
                 title="Импорт из файла Markdown"

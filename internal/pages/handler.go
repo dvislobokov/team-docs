@@ -105,6 +105,9 @@ type pageResponse struct {
 	UpdatedAt time.Time       `json:"updatedAt"`
 	// Имя последнего редактора; null для страниц без авторства (старые, MCP).
 	UpdatedByName *string `json:"updatedByName"`
+	// CanEdit — вправе ли текущий пользователь редактировать страницу
+	// (роль в проекте, §10); UI прячет кнопки правки для читателей.
+	CanEdit bool `json:"canEdit"`
 }
 
 type createRequest struct {
@@ -249,8 +252,12 @@ func (h *Handler) get(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	if err := h.guardRead(c, id); err != nil {
-		return err
+	role, err := h.pageRole(c, id)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !projects.CanRead(role)) {
+		return echo.NewHTTPError(http.StatusNotFound, "page not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "resolve project role")
 	}
 	row, err := h.q.GetPage(c.Request().Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
@@ -269,6 +276,7 @@ func (h *Handler) get(c echo.Context) error {
 		Version:       row.Version,
 		UpdatedAt:     row.UpdatedAt.Time,
 		UpdatedByName: row.UpdatedByName,
+		CanEdit:       projects.CanWrite(role),
 	})
 }
 
@@ -326,6 +334,7 @@ func (h *Handler) update(c echo.Context) error {
 		Version:       row.Version,
 		UpdatedAt:     row.UpdatedAt.Time,
 		UpdatedByName: updatedBy,
+		CanEdit:       true, // guardWrite уже пройден
 	})
 }
 

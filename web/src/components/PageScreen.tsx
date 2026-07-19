@@ -220,6 +220,8 @@ export function PageScreen() {
   }
 
   const headings = pageHeadings;
+  // Право правки: глобальное И проектное (роль в проекте страницы, §10).
+  const pageEditable = canEdit && page.canEdit !== false;
 
   // Дочерние страницы для карточек-галереи (сценарий страницы-контейнера).
   const childNodes = nodes
@@ -229,7 +231,7 @@ export function PageScreen() {
 
   const actions = (
     <>
-      {canEdit && (
+      {pageEditable && (
         <button
           type="button"
           onClick={() => setHistoryOpen(true)}
@@ -246,7 +248,7 @@ export function PageScreen() {
       >
         <Download className="h-[17px] w-[17px]" />
       </button>
-      {canEdit && (
+      {pageEditable && (
         <button
           type="button"
           onClick={remove}
@@ -257,7 +259,7 @@ export function PageScreen() {
         </button>
       )}
       <ShareButton />
-      {canEdit && (
+      {pageEditable && (
         <button
           type="button"
           onClick={() => setEditing((v) => !v)}
@@ -297,7 +299,7 @@ export function PageScreen() {
             <EmojiButton
               value={page.icon}
               onChange={onIconChange}
-              disabled={!canEdit}
+              disabled={!pageEditable}
               fallback="📄"
               triggerClassName="flex h-[48px] w-[48px] shrink-0 items-center justify-center rounded-xl text-[36px] leading-none transition hover:bg-line/50 md:h-[60px] md:w-[60px] md:text-[46px]"
             />
@@ -337,7 +339,7 @@ export function PageScreen() {
                 <PageEditor
                   key={`${page.id}-${editorEpoch}`}
                   initialContent={page.content}
-                  editable={editing && canEdit}
+                  editable={editing && pageEditable}
                   theme={theme}
                   onChange={onContentChange}
                 />
