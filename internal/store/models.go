@@ -27,6 +27,17 @@ type File struct {
 	Content   []byte             `json:"content"`
 }
 
+type Group struct {
+	ID        int64              `json:"id"`
+	Name      string             `json:"name"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
+type GroupMember struct {
+	GroupID int64 `json:"group_id"`
+	UserID  int64 `json:"user_id"`
+}
+
 type Page struct {
 	ID           int64              `json:"id"`
 	ParentID     *int64             `json:"parent_id"`
@@ -62,6 +73,12 @@ type Project struct {
 	Icon       string             `json:"icon"`
 	CreatedAt  pgtype.Timestamptz `json:"created_at"`
 	Visibility string             `json:"visibility"`
+}
+
+type ProjectGroupMember struct {
+	ProjectID int64  `json:"project_id"`
+	GroupID   int64  `json:"group_id"`
+	Role      string `json:"role"`
 }
 
 type ProjectMember struct {

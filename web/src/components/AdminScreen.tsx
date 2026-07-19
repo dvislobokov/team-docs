@@ -1,11 +1,18 @@
 import { useEffect, useState } from "react";
 import { Lock } from "lucide-react";
 import {
+  addGroupMember,
+  createGroup,
+  deleteGroup,
+  listGroupMembers,
+  listGroups,
   listSettings,
   listUsers,
+  removeGroupMember,
   saveSetting,
   setUserRole,
   type AdminUser,
+  type Group,
   type Setting,
 } from "../api/admin";
 import {
@@ -80,6 +87,8 @@ export function AdminScreen() {
 
         <ProjectsSection />
 
+        <GroupsSection />
+
         <h2 className="mt-10 text-[15px] font-600 text-ink">Пользователи и роли</h2>
         <p className="mt-1 text-[13px] text-muted">
           Читатель — только просмотр; редактор — правка страниц; администратор —
@@ -123,6 +132,118 @@ export function AdminScreen() {
           </table>
         </div>
       </section>
+    </>
+  );
+}
+
+// Локальные группы (§8): состав группы; права группе в проекте выдаются
+// через API проекта (PUT /api/projects/:id/groups/:groupId).
+function GroupsSection() {
+  const toast = useToast();
+  const [groups, setGroups] = useState<Group[] | null>(null);
+  const [newName, setNewName] = useState("");
+  const [openId, setOpenId] = useState<number | null>(null);
+  const [members, setMembers] = useState<AdminUser[]>([]);
+  const [allUsers, setAllUsers] = useState<AdminUser[]>([]);
+  const [addId, setAddId] = useState("");
+
+  const load = () => {
+    listGroups().then(setGroups).catch(() => setGroups([]));
+  };
+  useEffect(load, []);
+  useEffect(() => {
+    listUsers().then(setAllUsers).catch(() => undefined);
+  }, []);
+
+  const openMembers = async (g: Group) => {
+    if (openId === g.id) return setOpenId(null);
+    setMembers(await listGroupMembers(g.id).catch(() => []));
+    setOpenId(g.id);
+  };
+
+  return (
+    <>
+      <h2 className="mt-10 text-[15px] font-600 text-ink">Группы</h2>
+      <p className="mt-1 text-[13px] text-muted">
+        Группе можно выдать роль в проекте (секция «Проекты» → участники);
+        личное членство в проекте приоритетнее группового.
+      </p>
+      <div className="mt-4 flex flex-col gap-2">
+        {groups?.map((g) => (
+          <div key={g.id} className="rounded-xl border border-line px-4 py-2.5">
+            <div className="flex items-center gap-3">
+              <span className="min-w-0 flex-1 truncate text-[14px] text-ink">
+                {g.name} <span className="text-[12px] text-faint">({g.members})</span>
+              </span>
+              <button type="button" onClick={() => openMembers(g)}
+                className="rounded-md border border-line px-2.5 py-1 text-[12px] text-body hover:border-faint">
+                Состав
+              </button>
+              <button type="button"
+                onClick={async () => { await deleteGroup(g.id); toast("Группа удалена", "success"); load(); }}
+                className="rounded px-1.5 text-[12px] text-red-500 hover:bg-red-500/10">
+                Удалить
+              </button>
+            </div>
+            {openId === g.id && (
+              <div className="mt-2 border-t border-line/60 pt-2">
+                {members.map((m) => (
+                  <div key={m.id} className="flex items-center gap-2 py-0.5">
+                    <span className="min-w-0 flex-1 truncate text-[13px] text-body">
+                      {m.name || m.username} <span className="text-faint">{m.email}</span>
+                    </span>
+                    <button type="button"
+                      onClick={async () => {
+                        await removeGroupMember(g.id, m.id);
+                        setMembers((l) => l.filter((x) => x.id !== m.id));
+                        load();
+                      }}
+                      className="rounded px-1.5 text-[12px] text-red-500 hover:bg-red-500/10">
+                      Убрать
+                    </button>
+                  </div>
+                ))}
+                <div className="mt-1.5 flex items-center gap-2">
+                  <select value={addId} onChange={(e) => setAddId(e.target.value)}
+                    className="min-w-0 flex-1 rounded-md border border-line bg-card px-2 py-1 text-[12px] text-body outline-none">
+                    <option value="">Добавить в группу…</option>
+                    {allUsers.filter((u) => !members.some((m) => m.id === u.id)).map((u) => (
+                      <option key={u.id} value={u.id}>{u.name || u.username} ({u.email || u.subject})</option>
+                    ))}
+                  </select>
+                  <button type="button" disabled={!addId}
+                    onClick={async () => {
+                      await addGroupMember(g.id, Number(addId));
+                      setMembers(await listGroupMembers(g.id).catch(() => []));
+                      setAddId("");
+                      load();
+                    }}
+                    className="rounded-md border border-line px-2.5 py-1 text-[12px] text-body hover:border-faint disabled:opacity-50">
+                    Добавить
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+        <div className="flex items-center gap-2">
+          <input value={newName} onChange={(e) => setNewName(e.target.value)}
+            placeholder="Название группы"
+            className="min-w-0 flex-1 rounded-md border border-line bg-card px-2.5 py-1.5 text-[13px] text-ink outline-none focus:border-accent" />
+          <button type="button" disabled={!newName}
+            onClick={async () => {
+              try {
+                await createGroup(newName);
+                setNewName("");
+                toast("Группа создана", "success");
+                load();
+              } catch { toast("Не удалось создать группу", "error"); }
+            }}
+            className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-500 text-white hover:bg-accent/90 disabled:opacity-50">
+            Создать
+          </button>
+        </div>
+      </div>
     </>
   );
 }

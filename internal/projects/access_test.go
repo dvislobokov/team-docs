@@ -65,6 +65,7 @@ func TestAccessMatrix(t *testing.T) {
 	t.Cleanup(func() {
 		_, _ = pool.Exec(ctx, `DELETE FROM projects WHERE key LIKE 'am-%'`)
 		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE subject LIKE 'am-%'`)
+		_, _ = pool.Exec(ctx, `DELETE FROM groups WHERE name LIKE 'am-%'`)
 	})
 
 	a, err := auth.New(config.AuthSettings{Enabled: true, HMACSecret: "x", PublicRead: true})
@@ -94,6 +95,25 @@ func TestAccessMatrix(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Группа: groupie (глобально reader) входит в группу-редактора private.
+	groupie := mkUser(t, q, "am-groupie", auth.RoleReader)
+	grp, err := q.CreateGroup(ctx, "am-team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.AddGroupMember(ctx, store.AddGroupMemberParams{GroupID: grp.ID, UserID: groupie.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpsertProjectGroup(ctx, store.UpsertProjectGroupParams{
+		ProjectID: private.ID, GroupID: grp.ID, Role: auth.RoleEditor,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	// А member (личный editor) состоит и в группе-reader — личное должно победить.
+	if err := q.AddGroupMember(ctx, store.AddGroupMemberParams{GroupID: grp.ID, UserID: member.ID}); err != nil {
+		t.Fatal(err)
+	}
+
 	cases := []struct {
 		name string
 		u    *auth.User
@@ -109,6 +129,8 @@ func TestAccessMatrix(t *testing.T) {
 		{"member(reader) в private — редактор (членство поднимает)", member, private, auth.RoleEditor},
 		{"editor в internal — reader (членство ограничивает)", editor, internal, auth.RoleReader},
 		{"глобальный админ в private — админ", globalAdmin, private, auth.RoleAdmin},
+		{"группа даёт editor в private", groupie, private, auth.RoleEditor},
+		{"личное членство приоритетнее группового", member, private, auth.RoleEditor},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

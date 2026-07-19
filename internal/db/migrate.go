@@ -13,10 +13,25 @@ import (
 //go:embed migrations/*.sql
 var migrationsFS embed.FS
 
+// migrateLockKey — ключ advisory-блокировки миграций (произвольная константа).
+const migrateLockKey = 0x7465616d646f6373 // "teamdocs"
+
 // Migrate применяет все миграции из папки migrations по порядку имён.
 // Каждая миграция выполняется один раз (учёт в таблице schema_migrations)
-// и оборачивается в транзакцию.
+// и оборачивается в транзакцию. Advisory-lock защищает от параллельного
+// применения (несколько реплик приложения или параллельные тестовые пакеты).
 func Migrate(ctx context.Context, pool *pgxpool.Pool) error {
+	// Блокировка живёт на конкретном соединении — держим его до конца.
+	conn, err := pool.Acquire(ctx)
+	if err != nil {
+		return fmt.Errorf("acquire conn: %w", err)
+	}
+	defer conn.Release()
+	if _, err := conn.Exec(ctx, `SELECT pg_advisory_lock($1)`, int64(migrateLockKey)); err != nil {
+		return fmt.Errorf("advisory lock: %w", err)
+	}
+	defer func() { _, _ = conn.Exec(ctx, `SELECT pg_advisory_unlock($1)`, int64(migrateLockKey)) }()
+
 	if _, err := pool.Exec(ctx, `
 		CREATE TABLE IF NOT EXISTS schema_migrations (
 			version    TEXT PRIMARY KEY,

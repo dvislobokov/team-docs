@@ -37,6 +37,73 @@ func (h *Handler) Register(api *echo.Group) {
 	api.GET("/projects/:id/members", h.members)
 	api.PUT("/projects/:id/members/:userId", h.setMember)
 	api.DELETE("/projects/:id/members/:userId", h.removeMember)
+	api.GET("/projects/:id/groups", h.groups)
+	api.PUT("/projects/:id/groups/:groupId", h.setGroup)
+	api.DELETE("/projects/:id/groups/:groupId", h.removeGroup)
+}
+
+func (h *Handler) groups(c echo.Context) error {
+	p, err := h.requireProjectAdmin(c)
+	if err != nil {
+		return err
+	}
+	rows, err := h.q.ListProjectGroups(c.Request().Context(), p.ID)
+	if err != nil {
+		return h.fail(c, err, "list project groups")
+	}
+	type group struct {
+		GroupID int64  `json:"groupId"`
+		Role    string `json:"role"`
+		Name    string `json:"name"`
+	}
+	out := make([]group, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, group{GroupID: r.GroupID, Role: r.Role, Name: r.Name})
+	}
+	return c.JSON(http.StatusOK, out)
+}
+
+func (h *Handler) setGroup(c echo.Context) error {
+	p, err := h.requireProjectAdmin(c)
+	if err != nil {
+		return err
+	}
+	groupID, err := strconv.ParseInt(c.Param("groupId"), 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid groupId")
+	}
+	var req struct {
+		Role string `json:"role"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid body")
+	}
+	if req.Role != auth.RoleReader && req.Role != auth.RoleEditor && req.Role != auth.RoleAdmin {
+		return echo.NewHTTPError(http.StatusBadRequest, "role must be reader|editor|admin")
+	}
+	if err := h.q.UpsertProjectGroup(c.Request().Context(), store.UpsertProjectGroupParams{
+		ProjectID: p.ID, GroupID: groupID, Role: req.Role,
+	}); err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "группа не найдена")
+	}
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (h *Handler) removeGroup(c echo.Context) error {
+	p, err := h.requireProjectAdmin(c)
+	if err != nil {
+		return err
+	}
+	groupID, err := strconv.ParseInt(c.Param("groupId"), 10, 64)
+	if err != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "invalid groupId")
+	}
+	if err := h.q.RemoveProjectGroup(c.Request().Context(), store.RemoveProjectGroupParams{
+		ProjectID: p.ID, GroupID: groupID,
+	}); err != nil {
+		return h.fail(c, err, "remove project group")
+	}
+	return c.NoContent(http.StatusNoContent)
 }
 
 type projectDTO struct {

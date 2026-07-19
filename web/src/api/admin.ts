@@ -19,6 +19,36 @@ export function setUserRole(id: number, role: string): Promise<void> {
   return request<void>(`/admin/users/${id}/role`, { method: "PUT", body: { role } });
 }
 
+export interface Group {
+  id: number;
+  name: string;
+  members: number;
+}
+
+export function listGroups(): Promise<Group[]> {
+  return request<Group[]>("/admin/groups");
+}
+
+export function createGroup(name: string): Promise<Group> {
+  return request<Group>("/admin/groups", { method: "POST", body: { name } });
+}
+
+export function deleteGroup(id: number): Promise<void> {
+  return request<void>(`/admin/groups/${id}`, { method: "DELETE" });
+}
+
+export function listGroupMembers(id: number): Promise<AdminUser[]> {
+  return request<AdminUser[]>(`/admin/groups/${id}/members`);
+}
+
+export function addGroupMember(id: number, userId: number): Promise<void> {
+  return request<void>(`/admin/groups/${id}/members/${userId}`, { method: "PUT" });
+}
+
+export function removeGroupMember(id: number, userId: number): Promise<void> {
+  return request<void>(`/admin/groups/${id}/members/${userId}`, { method: "DELETE" });
+}
+
 /** Настройка приложения: значение + источник (env/yaml заблокированы). */
 export interface Setting {
   key: string;

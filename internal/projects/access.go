@@ -36,7 +36,18 @@ func RoleFor(ctx context.Context, q *store.Queries, a *auth.Authenticator, u *au
 		return auth.RoleAdmin, nil
 	}
 	if u != nil && u.ID != 0 {
+		// 1) Личное членство.
 		role, err := q.GetProjectMemberRole(ctx, store.GetProjectMemberRoleParams{
+			ProjectID: project.ID, UserID: u.ID,
+		})
+		if err == nil {
+			return role, nil
+		}
+		if !errors.Is(err, pgx.ErrNoRows) {
+			return RoleNone, err
+		}
+		// 2) Групповое членство (лучшая роль среди групп пользователя).
+		role, err = q.GetProjectGroupRole(ctx, store.GetProjectGroupRoleParams{
 			ProjectID: project.ID, UserID: u.ID,
 		})
 		if err == nil {
