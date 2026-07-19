@@ -19,6 +19,9 @@ task sqlc               # или: sqlc generate                 — CI пада�
 # Prod-сборка: web build → sqlc → go build -tags prod (фронт встраивается через //go:embed)
 task build
 
+# Docker: полный стек одной командой (app + postgres, миграции при старте)
+docker compose up -d --build     # http://localhost:8080
+
 # Качество (то же, что проверяет CI)
 go vet ./...
 gofmt -l .              # CI требует отформатированный код
