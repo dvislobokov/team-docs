@@ -4,19 +4,13 @@ import (
 	"context"
 	"time"
 
-	"github.com/dvislobokov/srog"
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"team-docs/internal/store"
 )
 
 func toTimestamptz(t time.Time) pgtype.Timestamptz {
 	return pgtype.Timestamptz{Time: t, Valid: true}
 }
-
-// trashRetention — сколько страница живёт в корзине до автоочистки.
-const trashRetention = 30 * 24 * time.Hour
 
 // softDeleteSQL помечает удалённым всё живое поддерево корня $1.
 // Рекурсивный CTE — сырой SQL (не проходит анализатор sqlc).
@@ -100,31 +94,4 @@ func Restore(ctx context.Context, pool *pgxpool.Pool, id int64) error {
 	}
 
 	return tx.Commit(ctx)
-}
-
-// RunTrashJanitor чистит корзину при старте и раз в сутки: всё, что удалено
-// раньше trashRetention назад, стирается окончательно. Блокирует горутину.
-func RunTrashJanitor(ctx context.Context, pool *pgxpool.Pool, log *srog.Logger) {
-	q := store.New(pool)
-	purge := func() {
-		n, err := q.PurgeExpired(ctx, toTimestamptz(time.Now().Add(-trashRetention)))
-		if err != nil {
-			log.Error(err, "trash: janitor purge failed")
-			return
-		}
-		if n > 0 {
-			log.Information("trash: purged {Count} expired page(s)", n)
-		}
-	}
-	purge()
-	t := time.NewTicker(24 * time.Hour)
-	defer t.Stop()
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case <-t.C:
-			purge()
-		}
-	}
 }

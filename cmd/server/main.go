@@ -83,8 +83,9 @@ func main() {
 	srv.RegisterMCP(mcp.NewHTTPHandler(pool, log), mcpMW...)
 	log.Information("mcp: endpoint mounted at /mcp")
 
-	// Автоочистка корзины: при старте и раз в сутки.
-	go pages.RunTrashJanitor(ctx, pool, log)
+	// Фоновая уборка (корзина, старые ревизии, осиротевшие файлы):
+	// при старте и раз в сутки.
+	go pages.RunJanitor(ctx, pool, log)
 
 	registerStatic(srv, log) // no-op в dev, embed в prod-сборке
 
