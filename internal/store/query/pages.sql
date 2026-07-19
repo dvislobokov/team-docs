@@ -1,8 +1,8 @@
 -- name: GetPageTree :many
--- Плоский список для построения дерева в сайдбаре (без корзины).
+-- Плоский список для построения дерева в сайдбаре (без корзины), по проекту.
 SELECT id, parent_id, title, icon, position
 FROM pages
-WHERE deleted_at IS NULL
+WHERE deleted_at IS NULL AND project_id = $1
 ORDER BY parent_id NULLS FIRST, position, id;
 
 -- name: GetPage :one
@@ -14,14 +14,12 @@ LEFT JOIN users u ON u.id = p.updated_by
 WHERE p.id = $1 AND p.deleted_at IS NULL;
 
 -- name: CreatePage :one
--- Пока проекты не включены в UI, всё создаётся в дефолтном проекте 'main'.
 INSERT INTO pages (parent_id, title, position, created_by, updated_by, project_id)
 VALUES ($1, $2, COALESCE(
     (SELECT MAX(position) + 1 FROM pages
      WHERE parent_id IS NOT DISTINCT FROM $1 AND deleted_at IS NULL),
     0
-), sqlc.narg(author_id), sqlc.narg(author_id),
-    (SELECT id FROM projects WHERE key = 'main'))
+), sqlc.narg(author_id), sqlc.narg(author_id), sqlc.arg(project_id))
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at;
 
 -- name: UpdatePage :one
@@ -88,7 +86,7 @@ WHERE id = $1;
 
 -- name: ListTrash :many
 -- Содержимое корзины: корни удалённых поддеревьев (родитель жив или отсутствует).
-SELECT p.id, p.title, p.icon, p.deleted_at
+SELECT p.id, p.title, p.icon, p.deleted_at, p.project_id
 FROM pages p
 LEFT JOIN pages par ON par.id = p.parent_id
 WHERE p.deleted_at IS NOT NULL
@@ -110,6 +108,8 @@ SELECT id, parent_id, title, icon,
                    'MaxFragments=1,MaxWords=20,MinWords=5') AS snippet
 FROM pages
 WHERE search_vector @@ plainto_tsquery('russian', $1)
+  AND deleted_at IS NULL
+  AND project_id = ANY(sqlc.arg(project_ids)::bigint[])
 ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
 LIMIT 50;
 

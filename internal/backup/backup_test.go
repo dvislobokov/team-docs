@@ -62,11 +62,15 @@ func TestBackupRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	page, err := q.CreatePage(ctx, store.CreatePageParams{Title: "bk-root", AuthorID: &u.ID})
+	mainP, err := q.GetProjectByKey(ctx, "main")
 	if err != nil {
 		t.Fatal(err)
 	}
-	child, err := q.CreatePage(ctx, store.CreatePageParams{ParentID: &page.ID, Title: "bk-child"})
+	page, err := q.CreatePage(ctx, store.CreatePageParams{Title: "bk-root", AuthorID: &u.ID, ProjectID: mainP.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	child, err := q.CreatePage(ctx, store.CreatePageParams{ParentID: &page.ID, Title: "bk-child", ProjectID: mainP.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +132,11 @@ func TestBackupRoundTrip(t *testing.T) {
 	}
 
 	// Новая страница после импорта — sequence не должен конфликтовать.
-	if _, err := q.CreatePage(ctx, store.CreatePageParams{Title: "bk-after-import"}); err != nil {
+	mainAfter, err := q.GetProjectByKey(ctx, "main")
+	if err != nil {
+		t.Fatalf("main после импорта: %v", err)
+	}
+	if _, err := q.CreatePage(ctx, store.CreatePageParams{Title: "bk-after-import", ProjectID: mainAfter.ID}); err != nil {
 		t.Fatalf("создание после импорта (sequence): %v", err)
 	}
 }

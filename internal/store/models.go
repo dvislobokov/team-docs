@@ -56,11 +56,19 @@ type PageRevision struct {
 }
 
 type Project struct {
-	ID        int64              `json:"id"`
-	Key       string             `json:"key"`
-	Name      string             `json:"name"`
-	Icon      string             `json:"icon"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ID         int64              `json:"id"`
+	Key        string             `json:"key"`
+	Name       string             `json:"name"`
+	Icon       string             `json:"icon"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	Visibility string             `json:"visibility"`
+}
+
+type ProjectMember struct {
+	ProjectID int64              `json:"project_id"`
+	UserID    int64              `json:"user_id"`
+	Role      string             `json:"role"`
+	AddedAt   pgtype.Timestamptz `json:"added_at"`
 }
 
 type Setting struct {

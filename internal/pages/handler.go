@@ -17,6 +17,7 @@ import (
 
 	"team-docs/internal/auth"
 	"team-docs/internal/blocknote"
+	"team-docs/internal/projects"
 	"team-docs/internal/store"
 )
 
@@ -27,11 +28,51 @@ const revisionThrottle = 2 * time.Minute
 type Handler struct {
 	q    *store.Queries
 	pool *pgxpool.Pool // для многошаговых операций в транзакции (move)
+	a    *auth.Authenticator
 	log  *srog.Logger
 }
 
-func NewHandler(pool *pgxpool.Pool, log *srog.Logger) *Handler {
-	return &Handler{q: store.New(pool), pool: pool, log: log}
+func NewHandler(pool *pgxpool.Pool, a *auth.Authenticator, log *srog.Logger) *Handler {
+	return &Handler{q: store.New(pool), pool: pool, a: a, log: log}
+}
+
+// pageRole — роль текущего пользователя в проекте страницы.
+// ErrNoRows → страницы нет (404 у вызывающего).
+func (h *Handler) pageRole(c echo.Context, pageID int64) (string, error) {
+	projectID, err := h.q.GetPageProject(c.Request().Context(), pageID)
+	if err != nil {
+		return projects.RoleNone, err
+	}
+	u, _ := auth.FromContext(c)
+	return projects.RoleForID(c.Request().Context(), h.q, h.a, u, projectID)
+}
+
+// guardRead: 404, если страницы нет или проект недоступен (не палим
+// существование приватного контента).
+func (h *Handler) guardRead(c echo.Context, pageID int64) error {
+	role, err := h.pageRole(c, pageID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !projects.CanRead(role)) {
+		return echo.NewHTTPError(http.StatusNotFound, "page not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "resolve project role")
+	}
+	return nil
+}
+
+// guardWrite: 404 для невидимых, 403 для читателей проекта.
+func (h *Handler) guardWrite(c echo.Context, pageID int64) error {
+	role, err := h.pageRole(c, pageID)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !projects.CanRead(role)) {
+		return echo.NewHTTPError(http.StatusNotFound, "page not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "resolve project role")
+	}
+	if !projects.CanWrite(role) {
+		return echo.NewHTTPError(http.StatusForbidden, "editing not allowed in this project")
+	}
+	return nil
 }
 
 // Register регистрирует роуты на группе /api.
@@ -69,6 +110,9 @@ type pageResponse struct {
 type createRequest struct {
 	ParentID *int64 `json:"parentId"`
 	Title    string `json:"title"`
+	// ProjectID — проект для корневых страниц (по умолчанию 'main');
+	// у вложенных проект наследуется от родителя.
+	ProjectID *int64 `json:"projectId"`
 }
 
 type updateRequest struct {
@@ -85,8 +129,36 @@ type moveRequest struct {
 
 // --- Handlers ---
 
+// tree отдаёт дерево проекта (?project=<id>; по умолчанию 'main').
 func (h *Handler) tree(c echo.Context) error {
-	rows, err := h.q.GetPageTree(c.Request().Context())
+	ctx := c.Request().Context()
+	var project store.Project
+	var err error
+	if raw := c.QueryParam("project"); raw != "" {
+		id, perr := strconv.ParseInt(raw, 10, 64)
+		if perr != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid project")
+		}
+		project, err = h.q.GetProject(ctx, id)
+	} else {
+		project, err = h.q.GetProjectByKey(ctx, "main")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "get project")
+	}
+	u, _ := auth.FromContext(c)
+	role, err := projects.RoleFor(ctx, h.q, h.a, u, project)
+	if err != nil {
+		return h.fail(c, err, "resolve project role")
+	}
+	if !projects.CanRead(role) {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
+	}
+
+	rows, err := h.q.GetPageTree(ctx, project.ID)
 	if err != nil {
 		return h.fail(c, err, "get page tree")
 	}
@@ -112,19 +184,50 @@ func (h *Handler) create(c echo.Context) error {
 	if req.Title == "" {
 		req.Title = "Untitled"
 	}
-	// Родитель должен существовать и не лежать в корзине.
+	ctx := c.Request().Context()
+
+	// Проект: у вложенной страницы — от родителя (который должен существовать
+	// и не лежать в корзине); у корневой — из запроса либо 'main'.
+	var projectID int64
 	if req.ParentID != nil {
-		if _, err := h.q.GetPageMeta(c.Request().Context(), *req.ParentID); err != nil {
+		if _, err := h.q.GetPageMeta(ctx, *req.ParentID); err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return echo.NewHTTPError(http.StatusBadRequest, "parent page not found")
 			}
 			return h.fail(c, err, "create page: check parent")
 		}
+		pid, err := h.q.GetPageProject(ctx, *req.ParentID)
+		if err != nil {
+			return h.fail(c, err, "create page: parent project")
+		}
+		projectID = pid
+	} else if req.ProjectID != nil {
+		projectID = *req.ProjectID
+	} else {
+		p, err := h.q.GetProjectByKey(ctx, "main")
+		if err != nil {
+			return h.fail(c, err, "create page: default project")
+		}
+		projectID = p.ID
 	}
-	row, err := h.q.CreatePage(c.Request().Context(), store.CreatePageParams{
-		ParentID: req.ParentID,
-		Title:    req.Title,
-		AuthorID: auth.UserID(c),
+
+	u, _ := auth.FromContext(c)
+	role, err := projects.RoleForID(ctx, h.q, h.a, u, projectID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return echo.NewHTTPError(http.StatusBadRequest, "project not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "create page: resolve role")
+	}
+	if !projects.CanWrite(role) {
+		return echo.NewHTTPError(http.StatusForbidden, "editing not allowed in this project")
+	}
+
+	row, err := h.q.CreatePage(ctx, store.CreatePageParams{
+		ParentID:  req.ParentID,
+		Title:     req.Title,
+		AuthorID:  auth.UserID(c),
+		ProjectID: projectID,
 	})
 	if err != nil {
 		return h.fail(c, err, "create page")
@@ -144,6 +247,9 @@ func (h *Handler) create(c echo.Context) error {
 func (h *Handler) get(c echo.Context) error {
 	id, err := pathID(c)
 	if err != nil {
+		return err
+	}
+	if err := h.guardRead(c, id); err != nil {
 		return err
 	}
 	row, err := h.q.GetPage(c.Request().Context(), id)
@@ -177,6 +283,9 @@ func (h *Handler) update(c echo.Context) error {
 	}
 	if len(req.Content) == 0 {
 		req.Content = json.RawMessage("[]")
+	}
+	if err := h.guardWrite(c, id); err != nil {
+		return err
 	}
 
 	ctx := c.Request().Context()
@@ -252,6 +361,20 @@ func (h *Handler) move(c echo.Context) error {
 	if err := c.Bind(&req); err != nil {
 		return echo.NewHTTPError(http.StatusBadRequest, "invalid body")
 	}
+	if err := h.guardWrite(c, id); err != nil {
+		return err
+	}
+	// Перенос между проектами запрещён: родитель — из проекта страницы.
+	if req.ParentID != nil {
+		pageProj, err1 := h.q.GetPageProject(c.Request().Context(), id)
+		parentProj, err2 := h.q.GetPageProject(c.Request().Context(), *req.ParentID)
+		if err1 != nil || err2 != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "parent page not found")
+		}
+		if pageProj != parentProj {
+			return echo.NewHTTPError(http.StatusBadRequest, "cannot move page to another project")
+		}
+	}
 	switch err := Move(c.Request().Context(), h.pool, id, req.ParentID, req.Position); {
 	case errors.Is(err, ErrPageNotFound):
 		return echo.NewHTTPError(http.StatusNotFound, "page not found")
@@ -269,6 +392,9 @@ func (h *Handler) delete(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := h.guardWrite(c, id); err != nil {
+		return err
+	}
 	switch err := SoftDelete(c.Request().Context(), h.pool, id); {
 	case errors.Is(err, ErrPageNotFound):
 		return echo.NewHTTPError(http.StatusNotFound, "page not found")
@@ -278,21 +404,36 @@ func (h *Handler) delete(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
-// trash_ отдаёт содержимое корзины (корни удалённых поддеревьев).
+// trash_ отдаёт содержимое корзины (корни удалённых поддеревьев) — только из
+// проектов, где пользователь может писать (восстанавливать/удалять).
 func (h *Handler) trash_(c echo.Context) error {
-	rows, err := h.q.ListTrash(c.Request().Context())
+	ctx := c.Request().Context()
+	rows, err := h.q.ListTrash(ctx)
 	if err != nil {
 		return h.fail(c, err, "list trash")
 	}
+	u, _ := auth.FromContext(c)
+	writable := map[int64]bool{}
 	type item struct {
 		ID        int64     `json:"id"`
 		Title     string    `json:"title"`
 		Icon      string    `json:"icon"`
 		DeletedAt time.Time `json:"deletedAt"`
 	}
-	out := make([]item, 0, len(rows))
+	out := []item{}
 	for _, r := range rows {
-		out = append(out, item{ID: r.ID, Title: r.Title, Icon: r.Icon, DeletedAt: r.DeletedAt.Time})
+		ok, seen := writable[r.ProjectID]
+		if !seen {
+			role, err := projects.RoleForID(ctx, h.q, h.a, u, r.ProjectID)
+			if err != nil {
+				return h.fail(c, err, "resolve project role")
+			}
+			ok = projects.CanWrite(role)
+			writable[r.ProjectID] = ok
+		}
+		if ok {
+			out = append(out, item{ID: r.ID, Title: r.Title, Icon: r.Icon, DeletedAt: r.DeletedAt.Time})
+		}
 	}
 	return c.JSON(http.StatusOK, out)
 }
@@ -300,6 +441,9 @@ func (h *Handler) trash_(c echo.Context) error {
 func (h *Handler) restore(c echo.Context) error {
 	id, err := pathID(c)
 	if err != nil {
+		return err
+	}
+	if err := h.guardWrite(c, id); err != nil {
 		return err
 	}
 	switch err := Restore(c.Request().Context(), h.pool, id); {
@@ -316,6 +460,9 @@ func (h *Handler) purge(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := h.guardWrite(c, id); err != nil {
+		return err
+	}
 	n, err := h.q.PurgePage(c.Request().Context(), id)
 	if err != nil {
 		return h.fail(c, err, "purge page")
@@ -329,6 +476,9 @@ func (h *Handler) purge(c echo.Context) error {
 func (h *Handler) revisions(c echo.Context) error {
 	id, err := pathID(c)
 	if err != nil {
+		return err
+	}
+	if err := h.guardRead(c, id); err != nil {
 		return err
 	}
 	rows, err := h.q.ListRevisions(c.Request().Context(), id)
@@ -387,6 +537,9 @@ func (h *Handler) exportMarkdown(c echo.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := h.guardRead(c, id); err != nil {
+		return err
+	}
 	row, err := h.q.GetPage(c.Request().Context(), id)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return echo.NewHTTPError(http.StatusNotFound, "page not found")
@@ -417,7 +570,19 @@ func (h *Handler) search(c echo.Context) error {
 	if q == "" {
 		return c.JSON(http.StatusOK, []any{})
 	}
-	rows, err := h.q.SearchPages(c.Request().Context(), q)
+	ctx := c.Request().Context()
+	u, _ := auth.FromContext(c)
+	ids, err := projects.AccessibleIDs(ctx, h.q, h.a, u)
+	if err != nil {
+		return h.fail(c, err, "accessible projects")
+	}
+	if len(ids) == 0 {
+		return c.JSON(http.StatusOK, []any{})
+	}
+	rows, err := h.q.SearchPages(ctx, store.SearchPagesParams{
+		PlaintoTsquery: q,
+		ProjectIds:     ids,
+	})
 	if err != nil {
 		return h.fail(c, err, "search pages")
 	}

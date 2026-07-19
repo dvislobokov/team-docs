@@ -14,6 +14,8 @@ import (
 	"github.com/dvislobokov/srog"
 	"github.com/labstack/echo/v4"
 
+	"team-docs/internal/auth"
+	"team-docs/internal/config"
 	"team-docs/internal/pages"
 )
 
@@ -28,8 +30,13 @@ func newAPI(t *testing.T) *echo.Echo {
 	pool := testPool(t)
 	log := srog.NewConsole()
 	t.Cleanup(func() { _ = log.Close() })
+	// Авторизация выключена — проектные гарды дают admin (dev-режим).
+	a, err := auth.New(config.AuthSettings{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	e := echo.New()
-	pages.NewHandler(pool, log).Register(e.Group("/api"))
+	pages.NewHandler(pool, a, log).Register(e.Group("/api"))
 	return e
 }
 

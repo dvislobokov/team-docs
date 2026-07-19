@@ -42,15 +42,15 @@ VALUES ($1, $2, COALESCE(
     (SELECT MAX(position) + 1 FROM pages
      WHERE parent_id IS NOT DISTINCT FROM $1 AND deleted_at IS NULL),
     0
-), $3, $3,
-    (SELECT id FROM projects WHERE key = 'main'))
+), $3, $3, $4)
 RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at
 `
 
 type CreatePageParams struct {
-	ParentID *int64 `json:"parent_id"`
-	Title    string `json:"title"`
-	AuthorID *int64 `json:"author_id"`
+	ParentID  *int64 `json:"parent_id"`
+	Title     string `json:"title"`
+	AuthorID  *int64 `json:"author_id"`
+	ProjectID int64  `json:"project_id"`
 }
 
 type CreatePageRow struct {
@@ -65,9 +65,13 @@ type CreatePageRow struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
-// Пока проекты не включены в UI, всё создаётся в дефолтном проекте 'main'.
 func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreatePageRow, error) {
-	row := q.db.QueryRow(ctx, createPage, arg.ParentID, arg.Title, arg.AuthorID)
+	row := q.db.QueryRow(ctx, createPage,
+		arg.ParentID,
+		arg.Title,
+		arg.AuthorID,
+		arg.ProjectID,
+	)
 	var i CreatePageRow
 	err := row.Scan(
 		&i.ID,
@@ -146,7 +150,7 @@ func (q *Queries) GetPageMeta(ctx context.Context, id int64) (GetPageMetaRow, er
 const getPageTree = `-- name: GetPageTree :many
 SELECT id, parent_id, title, icon, position
 FROM pages
-WHERE deleted_at IS NULL
+WHERE deleted_at IS NULL AND project_id = $1
 ORDER BY parent_id NULLS FIRST, position, id
 `
 
@@ -158,9 +162,9 @@ type GetPageTreeRow struct {
 	Position int32  `json:"position"`
 }
 
-// Плоский список для построения дерева в сайдбаре (без корзины).
-func (q *Queries) GetPageTree(ctx context.Context) ([]GetPageTreeRow, error) {
-	rows, err := q.db.Query(ctx, getPageTree)
+// Плоский список для построения дерева в сайдбаре (без корзины), по проекту.
+func (q *Queries) GetPageTree(ctx context.Context, projectID int64) ([]GetPageTreeRow, error) {
+	rows, err := q.db.Query(ctx, getPageTree, projectID)
 	if err != nil {
 		return nil, err
 	}
@@ -299,7 +303,7 @@ func (q *Queries) ListRevisions(ctx context.Context, pageID int64) ([]ListRevisi
 
 const listTrash = `-- name: ListTrash :many
 
-SELECT p.id, p.title, p.icon, p.deleted_at
+SELECT p.id, p.title, p.icon, p.deleted_at, p.project_id
 FROM pages p
 LEFT JOIN pages par ON par.id = p.parent_id
 WHERE p.deleted_at IS NOT NULL
@@ -312,6 +316,7 @@ type ListTrashRow struct {
 	Title     string             `json:"title"`
 	Icon      string             `json:"icon"`
 	DeletedAt pgtype.Timestamptz `json:"deleted_at"`
+	ProjectID int64              `json:"project_id"`
 }
 
 // Мягкое удаление и восстановление поддерева — сырой SQL с рекурсивным CTE
@@ -331,6 +336,7 @@ func (q *Queries) ListTrash(ctx context.Context) ([]ListTrashRow, error) {
 			&i.Title,
 			&i.Icon,
 			&i.DeletedAt,
+			&i.ProjectID,
 		); err != nil {
 			return nil, err
 		}
@@ -393,9 +399,16 @@ SELECT id, parent_id, title, icon,
                    'MaxFragments=1,MaxWords=20,MinWords=5') AS snippet
 FROM pages
 WHERE search_vector @@ plainto_tsquery('russian', $1)
+  AND deleted_at IS NULL
+  AND project_id = ANY($2::bigint[])
 ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
 LIMIT 50
 `
+
+type SearchPagesParams struct {
+	PlaintoTsquery string  `json:"plainto_tsquery"`
+	ProjectIds     []int64 `json:"project_ids"`
+}
 
 type SearchPagesRow struct {
 	ID       int64  `json:"id"`
@@ -406,8 +419,8 @@ type SearchPagesRow struct {
 }
 
 // Поиск по генерируемой колонке search_vector (русская морфология, GIN-индекс).
-func (q *Queries) SearchPages(ctx context.Context, plaintoTsquery string) ([]SearchPagesRow, error) {
-	rows, err := q.db.Query(ctx, searchPages, plaintoTsquery)
+func (q *Queries) SearchPages(ctx context.Context, arg SearchPagesParams) ([]SearchPagesRow, error) {
+	rows, err := q.db.Query(ctx, searchPages, arg.PlaintoTsquery, arg.ProjectIds)
 	if err != nil {
 		return nil, err
 	}

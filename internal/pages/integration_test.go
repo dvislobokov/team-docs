@@ -38,10 +38,21 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
+func mainProjectID(t *testing.T, q *store.Queries) int64 {
+	t.Helper()
+	p, err := q.GetProjectByKey(context.Background(), "main")
+	if err != nil {
+		t.Fatalf("проект main: %v", err)
+	}
+	return p.ID
+}
+
 func createPage(t *testing.T, pool *pgxpool.Pool, parent *int64, title string) store.CreatePageRow {
 	t.Helper()
 	q := store.New(pool)
-	row, err := q.CreatePage(context.Background(), store.CreatePageParams{ParentID: parent, Title: title})
+	row, err := q.CreatePage(context.Background(), store.CreatePageParams{
+		ParentID: parent, Title: title, ProjectID: mainProjectID(t, q),
+	})
 	if err != nil {
 		t.Fatalf("создание страницы %q: %v", title, err)
 	}
@@ -99,7 +110,7 @@ func TestMoveReindexAndCycle(t *testing.T) {
 
 func childOrder(t *testing.T, q *store.Queries, parentID int64) []int64 {
 	t.Helper()
-	rows, err := q.GetPageTree(context.Background())
+	rows, err := q.GetPageTree(context.Background(), mainProjectID(t, q))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -130,7 +141,9 @@ func TestSearchRussianMorphology(t *testing.T) {
 	}
 
 	// Словоформа «настройка» должна находить «настройки» (russian-стемминг).
-	hits, err := q.SearchPages(ctx, "настройка")
+	hits, err := q.SearchPages(ctx, store.SearchPagesParams{
+		PlaintoTsquery: "настройка", ProjectIds: []int64{mainProjectID(t, q)},
+	})
 	if err != nil {
 		t.Fatalf("search: %v", err)
 	}

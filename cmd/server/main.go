@@ -16,6 +16,7 @@ import (
 	"team-docs/internal/db"
 	"team-docs/internal/mcp"
 	"team-docs/internal/pages"
+	"team-docs/internal/projects"
 	"team-docs/internal/server"
 	"team-docs/internal/settings"
 	"team-docs/internal/uploads"
@@ -87,7 +88,8 @@ func main() {
 	adminGroup := api.Group("/admin", auth.RequireAdmin(authenticator, log))
 	auth.NewAdminHandler(pool, registry).Register(adminGroup)
 	settings.NewHandler(settingsSvc).Register(adminGroup)
-	pages.NewHandler(pool, log).Register(api)
+	pages.NewHandler(pool, authenticator, log).Register(api)
+	projects.NewHandler(pool, authenticator, log).Register(api)
 	uploads.NewHandler(pool, log, settingsSvc.MaxUploadBytes).Register(api)
 	backup.NewHandler(pool, log, registry.Reset).Register(api, auth.RequireEditorStrict(authenticator, log))
 

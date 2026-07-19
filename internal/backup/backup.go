@@ -25,6 +25,7 @@ type Dump struct {
 	ExportedAt time.Time     `json:"exportedAt"`
 	Users      []UserRow     `json:"users,omitempty"`
 	Projects   []ProjectRow  `json:"projects,omitempty"`
+	Members    []MemberRow   `json:"members,omitempty"`
 	Pages      []PageRow     `json:"pages"`
 	Revisions  []RevisionRow `json:"revisions"`
 	Files      []FileRow     `json:"files"`
@@ -42,11 +43,19 @@ type UserRow struct {
 }
 
 type ProjectRow struct {
-	ID        int64     `json:"id"`
-	Key       string    `json:"key"`
-	Name      string    `json:"name"`
-	Icon      string    `json:"icon"`
-	CreatedAt time.Time `json:"createdAt"`
+	ID         int64     `json:"id"`
+	Key        string    `json:"key"`
+	Name       string    `json:"name"`
+	Icon       string    `json:"icon"`
+	Visibility string    `json:"visibility,omitempty"` // пусто (старый дамп) → internal
+	CreatedAt  time.Time `json:"createdAt"`
+}
+
+type MemberRow struct {
+	ProjectID int64     `json:"projectId"`
+	UserID    int64     `json:"userId"`
+	Role      string    `json:"role"`
+	AddedAt   time.Time `json:"addedAt"`
 }
 
 type PageRow struct {
@@ -131,16 +140,29 @@ func (s *Service) Export(ctx context.Context) (*Dump, error) {
 	}
 
 	if err := s.eachRow(ctx,
-		`SELECT id, key, name, icon, created_at FROM projects ORDER BY id`,
+		`SELECT id, key, name, icon, visibility, created_at FROM projects ORDER BY id`,
 		func(rows pgx.Rows) error {
 			var p ProjectRow
-			if err := rows.Scan(&p.ID, &p.Key, &p.Name, &p.Icon, &p.CreatedAt); err != nil {
+			if err := rows.Scan(&p.ID, &p.Key, &p.Name, &p.Icon, &p.Visibility, &p.CreatedAt); err != nil {
 				return err
 			}
 			d.Projects = append(d.Projects, p)
 			return nil
 		}); err != nil {
 		return nil, fmt.Errorf("export projects: %w", err)
+	}
+
+	if err := s.eachRow(ctx,
+		`SELECT project_id, user_id, role, added_at FROM project_members ORDER BY project_id, user_id`,
+		func(rows pgx.Rows) error {
+			var m MemberRow
+			if err := rows.Scan(&m.ProjectID, &m.UserID, &m.Role, &m.AddedAt); err != nil {
+				return err
+			}
+			d.Members = append(d.Members, m)
+			return nil
+		}); err != nil {
+		return nil, fmt.Errorf("export members: %w", err)
 	}
 
 	if err := s.eachRow(ctx,
@@ -244,7 +266,8 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op после успешного Commit
 
 	if _, err := tx.Exec(ctx,
-		`TRUNCATE pages, page_revisions, files, diagrams, users, projects RESTART IDENTITY CASCADE`); err != nil {
+		`TRUNCATE pages, page_revisions, files, diagrams, users, projects, project_members
+		 RESTART IDENTITY CASCADE`); err != nil {
 		return fmt.Errorf("очистка таблиц: %w", err)
 	}
 
@@ -259,12 +282,26 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 	}
 
 	for _, p := range d.Projects {
+		vis := p.Visibility
+		if vis == "" {
+			vis = "internal"
+		}
 		if _, err := tx.Exec(ctx,
-			`INSERT INTO projects (id, key, name, icon, created_at)
-			 OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5)`,
-			p.ID, p.Key, p.Name, p.Icon, p.CreatedAt,
+			`INSERT INTO projects (id, key, name, icon, visibility, created_at)
+			 OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4, $5, $6)`,
+			p.ID, p.Key, p.Name, p.Icon, vis, p.CreatedAt,
 		); err != nil {
 			return fmt.Errorf("вставка проекта %d: %w", p.ID, err)
+		}
+	}
+
+	for _, m := range d.Members {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO project_members (project_id, user_id, role, added_at)
+			 VALUES ($1, $2, $3, $4)`,
+			m.ProjectID, m.UserID, m.Role, m.AddedAt,
+		); err != nil {
+			return fmt.Errorf("вставка участника %d/%d: %w", m.ProjectID, m.UserID, err)
 		}
 	}
 

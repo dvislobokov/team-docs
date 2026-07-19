@@ -138,8 +138,19 @@ func optParentID(r mcp.CallToolRequest) *int64 {
 
 // --- tools ---
 
+// mainProjectID — MCP работает в дефолтном проекте 'main' (доверенная
+// интеграция; проектный параметр — задел ROADMAP §10).
+func (h *handlers) mainProjectID(ctx context.Context) (int64, error) {
+	p, err := h.q.GetProjectByKey(ctx, "main")
+	return p.ID, err
+}
+
 func (h *handlers) listPages(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	rows, err := h.q.GetPageTree(ctx)
+	mainID, err := h.mainProjectID(ctx)
+	if err != nil {
+		return h.fail("list_pages", err)
+	}
+	rows, err := h.q.GetPageTree(ctx, mainID)
 	if err != nil {
 		return h.fail("list_pages", err)
 	}
@@ -162,7 +173,11 @@ func (h *handlers) searchPages(ctx context.Context, r mcp.CallToolRequest) (*mcp
 	if err != nil {
 		return mcp.NewToolResultError(err.Error()), nil
 	}
-	rows, err := h.q.SearchPages(ctx, q)
+	mainID, err := h.mainProjectID(ctx)
+	if err != nil {
+		return h.fail("search_pages", err)
+	}
+	rows, err := h.q.SearchPages(ctx, store.SearchPagesParams{PlaintoTsquery: q, ProjectIds: []int64{mainID}})
 	if err != nil {
 		return h.fail("search_pages", err)
 	}
@@ -215,7 +230,13 @@ func (h *handlers) createPage(ctx context.Context, r mcp.CallToolRequest) (*mcp.
 		return h.fail("create_page: markdown", err)
 	}
 
-	created, err := h.q.CreatePage(ctx, store.CreatePageParams{ParentID: optParentID(r), Title: title})
+	mainID, err := h.mainProjectID(ctx)
+	if err != nil {
+		return h.fail("create_page", err)
+	}
+	created, err := h.q.CreatePage(ctx, store.CreatePageParams{
+		ParentID: optParentID(r), Title: title, ProjectID: mainID,
+	})
 	if err != nil {
 		return h.fail("create_page", err)
 	}
