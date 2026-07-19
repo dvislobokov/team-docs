@@ -134,6 +134,17 @@ SELECT id, page_id, version, title, content, created_at
 FROM page_revisions
 WHERE id = $1;
 
+-- name: RecentPages :many
+-- Недавно обновлённые страницы по доступным проектам (лента на главной).
+SELECT p.id, p.title, p.icon, p.updated_at, p.project_id,
+       u.name AS updated_by_name
+FROM pages p
+LEFT JOIN users u ON u.id = p.updated_by
+WHERE p.deleted_at IS NULL
+  AND p.project_id = ANY(sqlc.arg(project_ids)::bigint[])
+ORDER BY p.updated_at DESC
+LIMIT 12;
+
 -- name: ListTags :many
 -- Теги проекта с числом живых страниц (для фильтра/автодополнения).
 SELECT t.tag::text AS tag, COUNT(*) AS pages

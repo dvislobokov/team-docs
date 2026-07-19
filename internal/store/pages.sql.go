@@ -430,6 +430,54 @@ func (q *Queries) PurgePage(ctx context.Context, id int64) (int64, error) {
 	return result.RowsAffected(), nil
 }
 
+const recentPages = `-- name: RecentPages :many
+SELECT p.id, p.title, p.icon, p.updated_at, p.project_id,
+       u.name AS updated_by_name
+FROM pages p
+LEFT JOIN users u ON u.id = p.updated_by
+WHERE p.deleted_at IS NULL
+  AND p.project_id = ANY($1::bigint[])
+ORDER BY p.updated_at DESC
+LIMIT 12
+`
+
+type RecentPagesRow struct {
+	ID            int64              `json:"id"`
+	Title         string             `json:"title"`
+	Icon          string             `json:"icon"`
+	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
+	ProjectID     int64              `json:"project_id"`
+	UpdatedByName *string            `json:"updated_by_name"`
+}
+
+// Недавно обновлённые страницы по доступным проектам (лента на главной).
+func (q *Queries) RecentPages(ctx context.Context, projectIds []int64) ([]RecentPagesRow, error) {
+	rows, err := q.db.Query(ctx, recentPages, projectIds)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []RecentPagesRow{}
+	for rows.Next() {
+		var i RecentPagesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Icon,
+			&i.UpdatedAt,
+			&i.ProjectID,
+			&i.UpdatedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchPages = `-- name: SearchPages :many
 SELECT id, parent_id, title, icon,
        ts_headline('russian', content_text, plainto_tsquery('russian', $1),

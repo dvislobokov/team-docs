@@ -73,3 +73,17 @@ export function search(q: string, signal?: AbortSignal): Promise<SearchHit[]> {
 export function uploadFile(file: File): Promise<UploadResponse> {
   return upload<UploadResponse>("/upload", file);
 }
+
+/** Недавно обновлённые страницы по доступным проектам (лента на главной). */
+export interface RecentPage {
+  id: number;
+  title: string;
+  icon: string;
+  projectId: number;
+  updatedAt: string;
+  updatedByName: string | null;
+}
+
+export function getRecentPages(signal?: AbortSignal): Promise<RecentPage[]> {
+  return request<RecentPage[]>("/pages/recent", { signal });
+}

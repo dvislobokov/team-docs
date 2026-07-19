@@ -87,6 +87,7 @@ func (h *Handler) Register(api *echo.Group) {
 	api.GET("/pages/:id/revisions/:revId", h.revision)
 	api.GET("/pages/:id/markdown", h.exportMarkdown)
 	api.GET("/search", h.search)
+	api.GET("/pages/recent", h.recent)
 	api.GET("/tags", h.tags)
 	api.GET("/trash", h.trash_)
 	api.POST("/pages/:id/restore", h.restore)
@@ -420,6 +421,38 @@ func (h *Handler) delete(c echo.Context) error {
 		return h.fail(c, err, "delete page")
 	}
 	return c.NoContent(http.StatusNoContent)
+}
+
+// recent — лента недавно обновлённых страниц по доступным проектам (главная).
+func (h *Handler) recent(c echo.Context) error {
+	ctx := c.Request().Context()
+	u, _ := auth.FromContext(c)
+	ids, err := projects.AccessibleIDs(ctx, h.q, h.a, u)
+	if err != nil {
+		return h.fail(c, err, "accessible projects")
+	}
+	type item struct {
+		ID            int64     `json:"id"`
+		Title         string    `json:"title"`
+		Icon          string    `json:"icon"`
+		ProjectID     int64     `json:"projectId"`
+		UpdatedAt     time.Time `json:"updatedAt"`
+		UpdatedByName *string   `json:"updatedByName"`
+	}
+	out := []item{}
+	if len(ids) > 0 {
+		rows, err := h.q.RecentPages(ctx, ids)
+		if err != nil {
+			return h.fail(c, err, "recent pages")
+		}
+		for _, r := range rows {
+			out = append(out, item{
+				ID: r.ID, Title: r.Title, Icon: r.Icon, ProjectID: r.ProjectID,
+				UpdatedAt: r.UpdatedAt.Time, UpdatedByName: r.UpdatedByName,
+			})
+		}
+	}
+	return c.JSON(http.StatusOK, out)
 }
 
 // normalizeTags: null остаётся null (не трогать), иначе — trim, отбрасывание

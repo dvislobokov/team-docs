@@ -114,6 +114,12 @@ func TestHTTPCrudAndConflict(t *testing.T) {
 		t.Fatalf("get после restore: code=%d", rec.Code)
 	}
 
+	// Лента недавних отвечает и содержит восстановленную страницу.
+	rec = call(e, http.MethodGet, "/api/pages/recent", "")
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"http-crud-2"`) {
+		t.Fatalf("recent: code=%d body=%s", rec.Code, rec.Body.String())
+	}
+
 	// Move в собственное поддерево → 400 (HTTP-маппинг ErrMoveIntoSubtree)
 	rec = call(e, http.MethodPatch, fmt.Sprintf("/api/pages/%d/move", p.ID),
 		fmt.Sprintf(`{"parentId":%d,"position":0}`, p.ID))
