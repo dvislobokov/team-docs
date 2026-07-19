@@ -28,6 +28,16 @@ cd web && npm run build # tsc -b + vite build (typecheck фронта)
 
 Тестов в проекте нет. CI (`.github/workflows/ci.yml`): oxlint + tsc/vite build, gofmt + go vet + dev-сборка + проверка актуальности sqlc, затем prod-бинарь.
 
+### Тестовая инфраструктура (docker-compose.test.yml)
+
+```bash
+docker compose -f docker-compose.test.yml up -d --wait            # ядро: postgres
+docker compose -f docker-compose.test.yml --profile cache up -d   # + redis standalone
+docker compose -f docker-compose.test.yml down -v                 # остановить и почистить
+```
+
+Профили: `mail` (Mailpit), `cache` (redis standalone), `cache-sentinel`, `cache-cluster`, `s3` (MinIO); postgres поднимается всегда. Тестовый DSN: `postgres://teamdocs:teamdocs@localhost:54329/teamdocs_test` (порты меняются через env, см. комментарии в файле). Интеграционные тесты должны скипаться, если БД недоступна, — юнит-часть бежит без Docker. Sentinel/cluster анонсируют внутренние docker-адреса — тесты этих режимов гоняются внутри той же docker-сети (или в CI), не с хоста.
+
 ## Архитектура
 
 **Один бинарь, два режима.** `cmd/server` через build-теги выбирает раздачу статики: без тега `prod` (`static_dev.go`) статику отдаёт Vite; с тегом `prod` (`static_prod.go`) — встроенный `web/dist` (`web/embed.go`). Миграции (`internal/db/migrations/*.sql`) применяются автоматически при старте.
