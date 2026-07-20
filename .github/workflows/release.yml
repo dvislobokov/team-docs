@@ -1,17 +1,42 @@
 name: Release
 
-# Релиз на тег v*: кросс-платформенные бинари с встроенным фронтом
-# + прикрепление к GitHub Release.
+# Автоверсионирование по conventional commits на каждый push в main:
+#   feat → minor, fix → patch, "BREAKING CHANGE"/"!" → major;
+#   прочие типы (docs, chore, ci, …) релиз не создают.
+# Workflow сам ставит тег vX.Y.Z, собирает бинари, публикует GitHub Release
+# и докер-образ. Всё в одном workflow намеренно: тег, созданный из-под
+# GITHUB_TOKEN, другие workflows не запускает (защита GitHub от рекурсии).
 on:
   push:
-    tags: ["v*"]
+    branches: ["main"]
 
 permissions:
   contents: write
+  packages: write
 
 jobs:
+  version:
+    name: Вычислить версию и поставить тег
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.new_tag }}
+      changelog: ${{ steps.tag.outputs.changelog }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # нужна вся история тегов для вычисления следующей версии
+
+      - name: Следующая версия из conventional commits
+        id: tag
+        uses: mathieudutour/github-tag-action@v6.2
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: false # docs/chore/ci и т.п. → без релиза
+
   build:
     name: Бинари (все платформы)
+    needs: version
+    if: needs.version.outputs.tag != ''
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -36,19 +61,57 @@ jobs:
       - name: Кросс-сборка бинарей (тег prod, фронт встроен)
         run: |
           mkdir -p dist
-          version="${GITHUB_REF_NAME}"
+          version="${{ needs.version.outputs.tag }}"
           for target in linux/amd64 linux/arm64 windows/amd64 darwin/amd64 darwin/arm64; do
             os="${target%/*}"; arch="${target#*/}"
             ext=""; [ "$os" = "windows" ] && ext=".exe"
             out="dist/team-docs-${version}-${os}-${arch}${ext}"
             echo "-> $out"
             CGO_ENABLED=0 GOOS="$os" GOARCH="$arch" \
-              go build -tags prod -trimpath -ldflags "-s -w" -o "$out" ./cmd/server
+              go build -tags prod -trimpath \
+                -ldflags "-s -w -X main.version=${version}" \
+                -o "$out" ./cmd/server
           done
           (cd dist && sha256sum * > SHA256SUMS.txt)
 
       - name: GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ needs.version.outputs.tag }}
+          body: ${{ needs.version.outputs.changelog }}
           files: dist/*
-          generate_release_notes: true
+
+  docker:
+    name: Версионный образ в ghcr.io
+    needs: version
+    if: needs.version.outputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Теги и метки образа
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.version.outputs.tag }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.version.outputs.tag }}
+
+      - name: Сборка и пуш (Dockerfile в корне)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

@@ -18,9 +18,13 @@ import (
 	"team-docs/internal/uploads"
 )
 
+// version вшивается при релизной сборке: -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
 func main() {
 	log := srog.NewConsole()
 	defer func() { _ = log.Close() }()
+	log.Information("team-docs " + version)
 
 	cfg, err := config.Load()
 	if err != nil {

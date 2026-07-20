@@ -1,13 +1,11 @@
 name: Docker
 
-# Публикация образа в GitHub Container Registry (ghcr.io/<owner>/team-docs):
-#  - push в main → тег edge;
-#  - тег v*      → версия (v1.2.3 → 1.2.3, 1.2) + latest.
-# Авторизация — встроенный GITHUB_TOKEN, дополнительные секреты не нужны.
+# Публикация dev-образа в GitHub Container Registry: push в main → тег edge.
+# Версионные образы (1.2.3, 1.2, latest) публикует release.yml после
+# автоматической простановки тега. Авторизация — встроенный GITHUB_TOKEN.
 on:
   push:
     branches: ["main"]
-    tags: ["v*"]
 
 permissions:
   contents: read
@@ -35,8 +33,6 @@ jobs:
           images: ghcr.io/${{ github.repository }}
           tags: |
             type=edge,branch=main
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
 
       - name: Сборка и пуш (Dockerfile в корне)
         uses: docker/build-push-action@v6
