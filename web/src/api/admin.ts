@@ -65,6 +65,16 @@ export function authCheck(): Promise<Record<string, unknown>> {
   return request<Record<string, unknown>>("/admin/auth/check");
 }
 
+/** Секция действующих настроек авторизации (read-only, секреты замаскированы). */
+export interface AuthSettingsSection {
+  title: string;
+  items: { label: string; value: string }[];
+}
+
+export function authSettings(signal?: AbortSignal): Promise<AuthSettingsSection[]> {
+  return request<AuthSettingsSection[]>("/admin/auth/settings", { signal });
+}
+
 /** Настройка приложения: значение + источник (env/yaml заблокированы). */
 export interface Setting {
   key: string;

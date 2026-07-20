@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -35,6 +36,142 @@ func (h *AdminHandler) Register(g *echo.Group) {
 	g.PUT("/groups/:id/members/:userId", h.addGroupMember)
 	g.DELETE("/groups/:id/members/:userId", h.removeGroupMember)
 	g.GET("/auth/check", h.authCheck)
+	g.GET("/auth/settings", h.authSettings)
+}
+
+// authSettings — действующая конфигурация авторизации для вкладки админки:
+// сгруппированные секции «подпись → значение». Настройки задаются в yaml/env
+// и читаются на старте, поэтому здесь они только для чтения; секреты
+// (пароли, ключи, client_secret) маскируются.
+func (h *AdminHandler) authSettings(c echo.Context) error {
+	cfg := h.a.Config()
+
+	type item struct {
+		Label string `json:"label"`
+		Value string `json:"value"`
+	}
+	type section struct {
+		Title string `json:"title"`
+		Items []item `json:"items"`
+	}
+
+	yesNo := func(b bool) string {
+		if b {
+			return "да"
+		}
+		return "нет"
+	}
+	orDash := func(s string) string {
+		if s == "" {
+			return "—"
+		}
+		return s
+	}
+	secret := func(s string) string {
+		if s == "" {
+			return "—"
+		}
+		return "задан"
+	}
+	list := func(v []string) string {
+		if len(v) == 0 {
+			return "—"
+		}
+		return strings.Join(v, ", ")
+	}
+	configured := func(ok bool) string {
+		if ok {
+			return "настроен"
+		}
+		return "—"
+	}
+
+	general := section{Title: "Общие", Items: []item{
+		{"Авторизация включена", yesNo(cfg.Enabled)},
+		{"Публичное чтение (GET без входа)", yesNo(cfg.PublicRead)},
+		{"Роль новых пользователей", cfg.DefaultRole},
+		{"Группы редакторов", list(cfg.EditorGroups)},
+		{"Бутстрап админов (email)", list(cfg.AdminEmails)},
+		{"Внешний адрес (publicUrl)", orDash(cfg.PublicURL)},
+	}}
+	if !cfg.Enabled {
+		general.Items = append(general.Items, item{"Dev-пользователь", cfg.DevUser})
+	}
+
+	jwt := section{Title: "JWT от IAM-прокси", Items: []item{
+		{"Заголовок с токеном", cfg.Header},
+		{"JWKS URL (RS256)", orDash(cfg.JWKSURL)},
+		{"HMAC-секрет (HS256)", secret(cfg.HMACSecret)},
+		{"Issuer", orDash(cfg.Issuer)},
+		{"Audience", orDash(cfg.Audience)},
+		{"Claim логина / имени / email", cfg.UsernameClaim + " / " + cfg.NameClaim + " / " + cfg.EmailClaim},
+	}}
+
+	sessionSecret := "случайный (сессии слетают при рестарте)"
+	if cfg.SessionSecret != "" {
+		sessionSecret = "задан"
+	}
+	sessions := section{Title: "Сессии встроенного входа", Items: []item{
+		{"Секрет cookie-сессий", sessionSecret},
+		{"Время жизни сессии, часов", strconv.Itoa(cfg.SessionTTLHours)},
+	}}
+
+	p := cfg.Providers
+	oidc := "—"
+	if p.OIDC.Issuer != "" && p.OIDC.ClientID != "" {
+		oidc = "настроен: " + p.OIDC.Issuer
+	}
+	providers := section{Title: "OAuth-провайдеры", Items: []item{
+		{"Google", configured(p.Google.ClientID != "")},
+		{"Яндекс", configured(p.Yandex.ClientID != "")},
+		{"VK", configured(p.VK.ClientID != "")},
+		{"Apple", configured(p.Apple.ClientID != "")},
+		{"OIDC (" + p.OIDC.Label + ")", oidc},
+	}}
+
+	l := cfg.LDAP
+	ldap := section{Title: "LDAP"}
+	if l.URL == "" {
+		ldap.Items = []item{{"Каталог", "не настроен"}}
+	} else {
+		mode := "direct-bind (userLoginTemplate)"
+		if l.BindLogin != "" {
+			mode = "search-then-bind (сервисная учётка)"
+		}
+		tls := "по URL (ldaps)"
+		switch {
+		case l.InsecureSkipVerify:
+			tls = "проверка сертификата отключена (dev)"
+		case l.StartTLS:
+			tls = "StartTLS"
+		case !strings.HasPrefix(l.URL, "ldaps://"):
+			tls = "нет"
+		}
+		ldap.Items = []item{
+			{"Адрес", l.URL},
+			{"Пресет", l.Preset},
+			{"TLS", tls},
+			{"Base DN", orDash(l.BaseDN)},
+			{"Ветки поиска пользователей", list(l.UserBases)},
+			{"Режим", mode},
+			{"Сервисная учётка", orDash(l.BindLogin)},
+			{"Пароль сервисной учётки", secret(l.BindPassword)},
+			{"Шаблон direct-bind", orDash(l.UserLoginTemplate)},
+			{"Фильтр пользователя", orDash(l.UserFilter)},
+			{"Атрибуты логин / имя / email", orDash(l.LoginAttr) + " / " + orDash(l.NameAttr) + " / " + orDash(l.EmailAttr)},
+			{"База / фильтр групп", orDash(l.GroupBase) + " / " + orDash(l.GroupFilter)},
+			{"Группы с ролью admin", list(l.AdminGroups)},
+			{"Вложенные группы", yesNo(l.NestedGroups)},
+			{"Зеркалировать группы в локальные", yesNo(l.SyncGroups)},
+		}
+	}
+
+	localAdmin := section{Title: "Локальный администратор (break-glass)", Items: []item{
+		{"Логин", orDash(cfg.LocalAdmin.Username)},
+		{"Хеш пароля", secret(cfg.LocalAdmin.PasswordHash)},
+	}}
+
+	return c.JSON(http.StatusOK, []section{general, jwt, sessions, providers, ldap, localAdmin})
 }
 
 // authCheck — диагностика конфигурации авторизации: доступность JWKS,

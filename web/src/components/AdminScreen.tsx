@@ -3,6 +3,7 @@ import { Lock } from "lucide-react";
 import {
   addGroupMember,
   authCheck,
+  authSettings,
   createGroup,
   deleteGroup,
   listGroupMembers,
@@ -14,6 +15,7 @@ import {
   saveSetting,
   setUserRole,
   type AdminUser,
+  type AuthSettingsSection,
   type Group,
   type Setting,
 } from "../api/admin";
@@ -52,6 +54,7 @@ const ADMIN_TABS = [
   { key: "projects", label: "Проекты", icon: "📁" },
   { key: "groups", label: "Группы", icon: "👥" },
   { key: "users", label: "Пользователи", icon: "🪪" },
+  { key: "auth", label: "Авторизация", icon: "🔐" },
   { key: "data", label: "Данные", icon: "💾" },
 ] as const;
 type AdminTab = (typeof ADMIN_TABS)[number]["key"];
@@ -116,6 +119,7 @@ export function AdminScreen() {
             {tab === "projects" && <ProjectsSection />}
             {tab === "groups" && <GroupsSection />}
             {tab === "users" && <UsersSection />}
+            {tab === "auth" && <AuthSection />}
             {tab === "data" && <DataSection />}
           </div>
         </div>
@@ -200,13 +204,12 @@ function UsersSection() {
 }
 
 // «Данные»: экспорт/импорт всей БД (переехали из меню оформления) и ручной
-// запуск уборки; плюс диагностика конфигурации авторизации.
+// запуск уборки.
 function DataSection() {
   const toast = useToast();
   const confirm = useConfirm();
   const fileRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
-  const [check, setCheck] = useState<string | null>(null);
 
   const onImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -247,14 +250,6 @@ function DataSection() {
     }
   };
 
-  const doCheck = async () => {
-    try {
-      setCheck(JSON.stringify(await authCheck(), null, 2));
-    } catch {
-      setCheck("Проверка не удалась");
-    }
-  };
-
   return (
     <>
       <h2 className="text-[15px] font-600 text-ink">Данные и обслуживание</h2>
@@ -272,18 +267,147 @@ function DataSection() {
           className="rounded-md border border-line px-3 py-1.5 text-[13px] text-body hover:border-faint disabled:opacity-50">
           Запустить уборку
         </button>
-        <button type="button" onClick={doCheck}
-          className="rounded-md border border-line px-3 py-1.5 text-[13px] text-body hover:border-faint">
-          Проверить авторизацию
-        </button>
       </div>
       <p className="mt-1.5 text-[12px] text-muted">
         Уборка удаляет просроченную корзину, прореживает старые ревизии и
         чистит осиротевшие файлы (то же происходит автоматически раз в сутки).
       </p>
+    </>
+  );
+}
+
+// Порядок и подписи полей ответа GET /admin/auth/check.
+const CHECK_LABELS: [string, string][] = [
+  ["enabled", "Авторизация включена"],
+  ["publicRead", "Публичное чтение"],
+  ["jwks", "JWKS"],
+  ["providers", "OAuth-провайдеры"],
+  ["apple", "Ключ Apple"],
+  ["localAdmin", "Локальный администратор"],
+  ["warning", "Предупреждение"],
+];
+const LDAP_CHECK_LABELS: [string, string][] = [
+  ["url", "Адрес"],
+  ["preset", "Пресет"],
+  ["bindName", "Сервисная учётка"],
+  ["directBind", "Шаблон direct-bind"],
+  ["connect", "Соединение"],
+  ["serviceBind", "Сервисный bind"],
+  ["warning", "Предупреждение"],
+  ["error", "Ошибка"],
+];
+
+// Значение диагностики с подсветкой статуса: ok — зелёный, ошибки и
+// предупреждения — красный/янтарный.
+function CheckValue({ value, warn }: { value: unknown; warn?: boolean }) {
+  if (typeof value === "boolean") return <span className="text-body">{value ? "да" : "нет"}</span>;
+  if (Array.isArray(value))
+    return <span className="text-body">{value.length ? value.join(", ") : "—"}</span>;
+  const s = String(value ?? "—");
+  if (s === "ok") return <span className="font-500 text-green-600">ok</span>;
+  if (s.startsWith("ошибка")) return <span className="text-red-500">{s}</span>;
+  if (warn) return <span className="text-amber-600">{s}</span>;
+  return <span className="text-body">{s}</span>;
+}
+
+function CheckRows({ data, labels }: { data: Record<string, unknown>; labels: [string, string][] }) {
+  return (
+    <>
+      {labels
+        .filter(([key]) => data[key] !== undefined)
+        .map(([key, label]) => (
+          <div key={key} className="flex gap-3 py-1">
+            <span className="w-[220px] shrink-0 text-[13px] text-muted">{label}</span>
+            <span className="min-w-0 text-[13px]">
+              <CheckValue value={data[key]} warn={key === "warning"} />
+            </span>
+          </div>
+        ))}
+    </>
+  );
+}
+
+// «Авторизация»: действующая конфигурация (задаётся в env/yaml, поэтому
+// только для чтения) и живая диагностика — доступность JWKS, ключ Apple,
+// соединение с LDAP и сервисный bind.
+function AuthSection() {
+  const [sections, setSections] = useState<AuthSettingsSection[] | null>(null);
+  const [check, setCheck] = useState<Record<string, unknown> | null>(null);
+  const [checkErr, setCheckErr] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    authSettings(ctrl.signal)
+      .then(setSections)
+      .catch(() => setSections([]));
+    return () => ctrl.abort();
+  }, []);
+
+  const doCheck = async () => {
+    setChecking(true);
+    setCheckErr(null);
+    try {
+      setCheck(await authCheck());
+    } catch (e) {
+      setCheck(null);
+      setCheckErr(e instanceof ApiError ? e.message : "Проверка не удалась");
+    } finally {
+      setChecking(false);
+    }
+  };
+
+  const ldap = check?.ldap as Record<string, unknown> | undefined;
+
+  return (
+    <>
+      <h2 className="text-[15px] font-600 text-ink">Авторизация</h2>
+      <p className="mt-1 text-[13px] text-muted">
+        Настройки задаются в конфигурации (appsettings.yaml / переменные
+        TEAMDOCS_AUTH__*) и применяются при старте сервера. Кнопка «Проверить
+        работу» вживую проверяет доступность JWKS, ключ Apple, соединение с
+        LDAP и bind сервисной учётки.
+      </p>
+
+      <div className="mt-3 flex items-center gap-2">
+        <button type="button" disabled={checking} onClick={doCheck}
+          className="rounded-md bg-accent px-3 py-1.5 text-[13px] font-500 text-white hover:bg-accent/90 disabled:opacity-50">
+          {checking ? "Проверяем…" : "Проверить работу"}
+        </button>
+        {checkErr && <span className="text-[13px] text-red-500">{checkErr}</span>}
+      </div>
+
       {check && (
-        <pre className="mt-2 overflow-x-auto rounded-lg border border-line bg-card p-3 font-mono text-[12px] text-body">{check}</pre>
+        <div className="mt-3 rounded-xl border border-line px-4 py-3">
+          <h3 className="text-[12px] font-600 uppercase tracking-wide text-faint">Результат проверки</h3>
+          <div className="mt-1.5">
+            <CheckRows data={check} labels={CHECK_LABELS} />
+            {ldap && (
+              <div className="mt-2 border-t border-line/60 pt-2">
+                <div className="mb-1 text-[11px] font-600 uppercase tracking-wide text-faint">LDAP</div>
+                <CheckRows data={ldap} labels={LDAP_CHECK_LABELS} />
+              </div>
+            )}
+          </div>
+        </div>
       )}
+
+      <div className="mt-4 flex flex-col gap-3">
+        {sections === null && <div className="text-[13px] text-faint">Загрузка…</div>}
+        {sections?.map((s) => (
+          <div key={s.title} className="rounded-xl border border-line px-4 py-3">
+            <h3 className="text-[12px] font-600 uppercase tracking-wide text-faint">{s.title}</h3>
+            <div className="mt-1.5">
+              {s.items.map((it) => (
+                <div key={it.label} className="flex gap-3 py-1">
+                  <span className="w-[220px] shrink-0 text-[13px] text-muted">{it.label}</span>
+                  <span className="min-w-0 break-words text-[13px] text-body">{it.value}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
     </>
   );
 }
