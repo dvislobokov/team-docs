@@ -1,13 +1,22 @@
 import { useEffect, useState } from "react";
+import { List, X } from "lucide-react";
 import type { Heading } from "../lib/blocks";
 
 const SCROLL_ROOT = "main-scroll";
 const TOP_OFFSET = 96; // высота липкого топбара + отступ
+const TOC_LS_KEY = "td-toc-open"; // по умолчанию скрыто
 
 // Правое оглавление «На этой странице» с подсветкой активной секции (scroll-spy)
 // и плавным переходом. Якоря — элементы BlockNote с data-id = id блока-заголовка.
+// По умолчанию свёрнуто в кнопку; выбор запоминается в localStorage.
 export function RightRail({ headings }: { headings: Heading[] }) {
   const [active, setActive] = useState<string | null>(null);
+  const [open, setOpen] = useState(() => localStorage.getItem(TOC_LS_KEY) === "1");
+
+  const toggle = (v: boolean) => {
+    setOpen(v);
+    localStorage.setItem(TOC_LS_KEY, v ? "1" : "0");
+  };
 
   useEffect(() => {
     const root = document.getElementById(SCROLL_ROOT);
@@ -50,11 +59,39 @@ export function RightRail({ headings }: { headings: Heading[] }) {
 
   if (headings.length === 0) return null;
 
+  // Свёрнуто: компактная кнопка у правого края.
+  if (!open) {
+    return (
+      <aside className="hidden w-10 shrink-0 xl:block">
+        <div className="sticky top-24 flex justify-end">
+          <button
+            type="button"
+            onClick={() => toggle(true)}
+            title="На этой странице"
+            className="rounded-md border border-line bg-card p-1.5 text-faint transition hover:border-faint hover:text-ink"
+          >
+            <List className="h-4 w-4" />
+          </button>
+        </div>
+      </aside>
+    );
+  }
+
   return (
     <aside className="hidden w-52 shrink-0 xl:block">
       <div className="sticky top-24">
-        <div className="mb-3 font-mono text-[11px] uppercase tracking-[0.08em] text-faint">
-          На этой странице
+        <div className="mb-3 flex items-center justify-between">
+          <span className="font-mono text-[11px] uppercase tracking-[0.08em] text-faint">
+            На этой странице
+          </span>
+          <button
+            type="button"
+            onClick={() => toggle(false)}
+            title="Скрыть оглавление"
+            className="rounded p-0.5 text-faint transition hover:bg-line/60 hover:text-ink"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
         </div>
         <ul className="space-y-2 border-l border-line text-[13px]">
           {headings.map((h) => {

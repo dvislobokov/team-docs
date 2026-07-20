@@ -46,34 +46,28 @@ const ROLES = [
   { value: "admin", label: "Администратор" },
 ];
 
-// Страница администрирования (ROADMAP §9). Пока — пользователи и роли;
-// секции настроек добавятся с переносом конфига в БД.
+// Вкладки админки (вертикальная навигация слева).
+const ADMIN_TABS = [
+  { key: "settings", label: "Настройки", icon: "⚙️" },
+  { key: "projects", label: "Проекты", icon: "📁" },
+  { key: "groups", label: "Группы", icon: "👥" },
+  { key: "users", label: "Пользователи", icon: "🪪" },
+  { key: "data", label: "Данные", icon: "💾" },
+] as const;
+type AdminTab = (typeof ADMIN_TABS)[number]["key"];
+
+// Страница администрирования (ROADMAP §9): вертикальные табы по логическим
+// частям. Активная вкладка запоминается в localStorage.
 export function AdminScreen() {
   const me = useAuth();
-  const toast = useToast();
-  const [users, setUsers] = useState<AdminUser[] | null>(null);
-  const [busyId, setBusyId] = useState<number | null>(null);
+  const [tab, setTab] = useState<AdminTab>(() => {
+    const saved = localStorage.getItem("td-admin-tab");
+    return ADMIN_TABS.some((t) => t.key === saved) ? (saved as AdminTab) : "settings";
+  });
 
-  useEffect(() => {
-    if (!me.isAdmin) return;
-    const ctrl = new AbortController();
-    listUsers(ctrl.signal)
-      .then(setUsers)
-      .catch(() => setUsers([]));
-    return () => ctrl.abort();
-  }, [me.isAdmin]);
-
-  const changeRole = async (u: AdminUser, role: string) => {
-    setBusyId(u.id);
-    try {
-      await setUserRole(u.id, role);
-      setUsers((list) => list?.map((x) => (x.id === u.id ? { ...x, role } : x)) ?? null);
-      toast(`Роль обновлена: ${u.name || u.username}`, "success");
-    } catch {
-      toast("Не удалось обновить роль", "error");
-    } finally {
-      setBusyId(null);
-    }
+  const switchTab = (t: AdminTab) => {
+    setTab(t);
+    localStorage.setItem("td-admin-tab", t);
   };
 
   if (!me.isAdmin) {
@@ -90,60 +84,117 @@ export function AdminScreen() {
   return (
     <>
       <Topbar crumbs={[{ id: -1, title: "Администрирование", icon: "🛠️" }]} />
-      <section className="animate-page-in mx-auto w-full max-w-[860px] px-6 py-10 md:py-14">
+      <section className="animate-page-in mx-auto w-full max-w-[1000px] px-6 py-10 md:py-14">
         <h1 className="font-display text-[30px] font-500 text-ink">Администрирование</h1>
 
-        <SettingsSection />
-
-        <ProjectsSection />
-
-        <GroupsSection />
-
-        <DataSection />
-
-        <h2 className="mt-10 text-[15px] font-600 text-ink">Пользователи и роли</h2>
-        <p className="mt-1 text-[13px] text-muted">
-          Читатель — только просмотр; редактор — правка страниц; администратор —
-          плюс управление ролями. Роли действуют при включённой авторизации.
-        </p>
-
-        <div className="mt-4 overflow-x-auto rounded-xl border border-line">
-          <table className="w-full text-[13px]">
-            <thead>
-              <tr className="border-b border-line text-left text-[12px] uppercase tracking-wide text-faint">
-                <th className="px-4 py-2.5 font-500">Имя</th>
-                <th className="px-4 py-2.5 font-500">Email</th>
-                <th className="px-4 py-2.5 font-500">Был(а)</th>
-                <th className="px-4 py-2.5 font-500">Роль</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users === null && (
-                <tr><td colSpan={4} className="px-4 py-6 text-faint">Загрузка…</td></tr>
-              )}
-              {users?.map((u) => (
-                <tr key={u.id} className="border-b border-line/60 last:border-0">
-                  <td className="px-4 py-2.5 text-ink">{u.name || u.username || u.subject}</td>
-                  <td className="px-4 py-2.5 text-muted">{u.email}</td>
-                  <td className="px-4 py-2.5 text-muted">{relativeTime(u.lastSeenAt)}</td>
-                  <td className="px-4 py-2.5">
-                    <select
-                      value={u.role}
-                      disabled={busyId === u.id}
-                      onChange={(e) => changeRole(u, e.target.value)}
-                      className="rounded-md border border-line bg-card px-2 py-1 text-[13px] text-body outline-none transition hover:border-faint"
-                    >
-                      {ROLES.map((r) => (
-                        <option key={r.value} value={r.value}>{r.label}</option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
+        <div className="mt-8 flex flex-col gap-8 md:flex-row">
+          {/* вертикальные табы */}
+          <nav className="shrink-0 md:w-52">
+            <div className="sticky top-24 flex gap-1 overflow-x-auto md:flex-col">
+              {ADMIN_TABS.map((t) => (
+                <button
+                  key={t.key}
+                  type="button"
+                  onClick={() => switchTab(t.key)}
+                  className={
+                    "flex shrink-0 items-center gap-2.5 rounded-lg px-3 py-2 text-left text-[14px] transition " +
+                    (tab === t.key
+                      ? "bg-accentSoft font-500 text-accent"
+                      : "text-body hover:bg-line/50")
+                  }
+                >
+                  <span className="text-[15px] leading-none">{t.icon}</span>
+                  {t.label}
+                </button>
               ))}
-            </tbody>
-          </table>
+            </div>
+          </nav>
+
+          {/* содержимое активной вкладки */}
+          <div className="min-w-0 flex-1">
+            {tab === "settings" && <SettingsSection />}
+            {tab === "projects" && <ProjectsSection />}
+            {tab === "groups" && <GroupsSection />}
+            {tab === "users" && <UsersSection />}
+            {tab === "data" && <DataSection />}
+          </div>
         </div>
       </section>
+    </>
+  );
+}
+
+// Пользователи и роли.
+function UsersSection() {
+  const toast = useToast();
+  const [users, setUsers] = useState<AdminUser[] | null>(null);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  useEffect(() => {
+    const ctrl = new AbortController();
+    listUsers(ctrl.signal)
+      .then(setUsers)
+      .catch(() => setUsers([]));
+    return () => ctrl.abort();
+  }, []);
+
+  const changeRole = async (u: AdminUser, role: string) => {
+    setBusyId(u.id);
+    try {
+      await setUserRole(u.id, role);
+      setUsers((list) => list?.map((x) => (x.id === u.id ? { ...x, role } : x)) ?? null);
+      toast(`Роль обновлена: ${u.name || u.username}`, "success");
+    } catch {
+      toast("Не удалось обновить роль", "error");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <>
+      <h2 className="text-[15px] font-600 text-ink">Пользователи и роли</h2>
+      <p className="mt-1 text-[13px] text-muted">
+        Читатель — только просмотр; редактор — правка страниц; администратор —
+        плюс управление ролями. Роли действуют при включённой авторизации.
+      </p>
+
+      <div className="mt-4 overflow-x-auto rounded-xl border border-line">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b border-line text-left text-[12px] uppercase tracking-wide text-faint">
+              <th className="px-4 py-2.5 font-500">Имя</th>
+              <th className="px-4 py-2.5 font-500">Email</th>
+              <th className="px-4 py-2.5 font-500">Был(а)</th>
+              <th className="px-4 py-2.5 font-500">Роль</th>
+            </tr>
+          </thead>
+          <tbody>
+            {users === null && (
+              <tr><td colSpan={4} className="px-4 py-6 text-faint">Загрузка…</td></tr>
+            )}
+            {users?.map((u) => (
+              <tr key={u.id} className="border-b border-line/60 last:border-0">
+                <td className="px-4 py-2.5 text-ink">{u.name || u.username || u.subject}</td>
+                <td className="px-4 py-2.5 text-muted">{u.email}</td>
+                <td className="px-4 py-2.5 text-muted">{relativeTime(u.lastSeenAt)}</td>
+                <td className="px-4 py-2.5">
+                  <select
+                    value={u.role}
+                    disabled={busyId === u.id}
+                    onChange={(e) => changeRole(u, e.target.value)}
+                    className="rounded-md border border-line bg-card px-2 py-1 text-[13px] text-body outline-none transition hover:border-faint"
+                  >
+                    {ROLES.map((r) => (
+                      <option key={r.value} value={r.value}>{r.label}</option>
+                    ))}
+                  </select>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
     </>
   );
 }
@@ -206,7 +257,7 @@ function DataSection() {
 
   return (
     <>
-      <h2 className="mt-10 text-[15px] font-600 text-ink">Данные и обслуживание</h2>
+      <h2 className="text-[15px] font-600 text-ink">Данные и обслуживание</h2>
       <div className="mt-3 flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => downloadBackup()}
           className="rounded-md border border-line px-3 py-1.5 text-[13px] text-body hover:border-faint">
@@ -264,7 +315,7 @@ function GroupsSection() {
 
   return (
     <>
-      <h2 className="mt-10 text-[15px] font-600 text-ink">Группы</h2>
+      <h2 className="text-[15px] font-600 text-ink">Группы</h2>
       <p className="mt-1 text-[13px] text-muted">
         Группе можно выдать роль в проекте (секция «Проекты» → участники);
         личное членство в проекте приоритетнее группового.
@@ -435,7 +486,7 @@ function ProjectsSection() {
 
   return (
     <>
-      <h2 className="mt-10 text-[15px] font-600 text-ink">Проекты</h2>
+      <h2 className="text-[15px] font-600 text-ink">Проекты</h2>
       <p className="mt-1 text-[13px] text-muted">
         Публичный — читают все; внутренний — все вошедшие; приватный — только
         участники. Роль участника действует вместо глобальной внутри проекта.
@@ -643,7 +694,7 @@ function SettingsSection() {
 
   return (
     <>
-      <h2 className="mt-8 text-[15px] font-600 text-ink">Настройки</h2>
+      <h2 className="text-[15px] font-600 text-ink">Настройки</h2>
       <p className="mt-1 text-[13px] text-muted">
         Значения с замочком заданы в конфигурации (env/yaml) и редактируются
         только там; остальные сохраняются в базе и применяются сразу.
