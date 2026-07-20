@@ -17,6 +17,12 @@ type Diagram struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
 
+type Favorite struct {
+	UserID    int64              `json:"user_id"`
+	PageID    int64              `json:"page_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+}
+
 type File struct {
 	ID        uuid.UUID          `json:"id"`
 	PageID    *int64             `json:"page_id"`
@@ -56,6 +62,7 @@ type Page struct {
 	DeletedAt    pgtype.Timestamptz `json:"deleted_at"`
 	ProjectID    int64              `json:"project_id"`
 	Tags         []string           `json:"tags"`
+	IsTemplate   bool               `json:"is_template"`
 }
 
 type PageRevision struct {

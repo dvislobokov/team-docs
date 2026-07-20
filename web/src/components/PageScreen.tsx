@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useLocation, useNavigate, useParams } from "react-router-dom";
 import type { PartialBlock } from "@blocknote/core";
-import { Download, Pencil, Trash2 } from "lucide-react";
-import { deletePage, getPage, getRevision, updatePage } from "../api/pages";
+import { Download, LayoutTemplate, Pencil, Star, Trash2 } from "lucide-react";
+import { createPage, deletePage, getPage, getRevision, updatePage } from "../api/pages";
 import { ConflictError } from "../api/client";
 import type { Page, PageTreeNode } from "../api/types";
 import { extractHeadings, isEmptyDoc, readingMinutes } from "../lib/blocks";
@@ -14,6 +14,8 @@ import { useTheme } from "../lib/theme";
 import { pathToNode } from "../lib/tree";
 import { useAuth } from "../store/auth";
 import { useConfirm } from "../store/confirm";
+import { useFavorites } from "../store/favorites";
+import { useTemplates } from "../store/templates";
 import { useToast } from "../store/toast";
 import { useTree } from "../store/tree";
 import { ChildCards } from "./ChildCards";
@@ -36,8 +38,11 @@ export function PageScreen() {
   const location = useLocation();
   const theme = useTheme();
   const width = useContentWidth();
-  const { nodes, reload } = useTree();
-  const { canEdit } = useAuth();
+  const { nodes, reload, projects, project, setProject } = useTree();
+  const user = useAuth();
+  const { canEdit } = user;
+  const { isFavorite, toggle: toggleFavorite, reload: reloadFavorites } = useFavorites();
+  const { reload: reloadTemplates } = useTemplates();
   const confirm = useConfirm();
   const toast = useToast();
 
@@ -102,6 +107,18 @@ export function PageScreen() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pageId]);
 
+  // Страница из другого проекта (избранное, недавние, прямая ссылка) —
+  // переключаем сайдбар на её проект, чтобы дерево и крошки совпадали.
+  // Ручное переключение проекта пользователем не откатываем: эффект зависит
+  // только от страницы и списка проектов.
+  useEffect(() => {
+    if (!page?.projectId || page.isTemplate) return;
+    if (project && project.id === page.projectId) return;
+    const target = projects.find((p) => p.id === page.projectId);
+    if (target) setProject(target);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page?.id, page?.projectId, projects]);
+
   const doSave = useCallback(async () => {
     const p = pageRef.current;
     if (!p) return;
@@ -118,10 +135,12 @@ export function PageScreen() {
       setPage(updated);
       setSaveState("saved");
       void reload(); // заголовок мог измениться — обновим дерево
+      if (updated.isTemplate) void reloadTemplates();
+      void reloadFavorites(); // заголовок в секции «Избранное»
     } catch (e) {
       setSaveState(e instanceof ConflictError ? "conflict" : "error");
     }
-  }, [reload]);
+  }, [reload, reloadTemplates, reloadFavorites]);
 
   const scheduleSave = useCallback(() => {
     if (timerRef.current) clearTimeout(timerRef.current);
@@ -172,8 +191,18 @@ export function PageScreen() {
     if (!ok) return;
     await deletePage(page.id);
     await reload();
+    if (page.isTemplate) void reloadTemplates();
+    void reloadFavorites();
     toast("Страница перемещена в корзину", "success");
     navigate("/", { replace: true });
+  };
+
+  // «Создать из шаблона»: копия шаблона обычной корневой страницей проекта.
+  const createFromTemplate = async () => {
+    if (!page) return;
+    const created = await createPage({ parentId: null, title: "", templateId: page.id });
+    await reload();
+    navigate(`/pages/${created.id}`, { state: { isNew: true } });
   };
 
   const applyLoaded = (p: Page) => {
@@ -241,8 +270,34 @@ export function PageScreen() {
     .sort((a, b) => a.position - b.position || a.id - b.id);
   const emptyContainer = !editing && isEmptyDoc(page.content) && childNodes.length > 0;
 
+  const favorited = isFavorite(page.id);
   const actions = (
     <>
+      {page.isTemplate && pageEditable && (
+        <button
+          type="button"
+          onClick={() => void createFromTemplate()}
+          className="flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[13px] text-muted transition hover:bg-line/60 hover:text-ink"
+          title="Создать страницу из этого шаблона"
+        >
+          <LayoutTemplate className="h-3.5 w-3.5" />
+          Создать из шаблона
+        </button>
+      )}
+      {user.authenticated && !page.isTemplate && (
+        <button
+          type="button"
+          onClick={() => void toggleFavorite(page.id)}
+          className="rounded-md p-1.5 text-muted transition hover:bg-line/60 hover:text-ink"
+          title={favorited ? "Убрать из избранного" : "В избранное"}
+        >
+          <Star
+            className={
+              "h-[17px] w-[17px] " + (favorited ? "fill-amber-400 text-amber-400" : "")
+            }
+          />
+        </button>
+      )}
       {pageEditable && (
         <button
           type="button"
@@ -332,6 +387,12 @@ export function PageScreen() {
           </div>
 
           <p className="mt-3 font-mono text-[12px] text-muted">
+            {page.isTemplate && (
+              <span className="mr-2 inline-flex items-center gap-1 rounded bg-accent-soft px-1.5 py-0.5 text-[11px] uppercase tracking-[0.06em] text-accent">
+                <LayoutTemplate className="h-3 w-3" />
+                Шаблон
+              </span>
+            )}
             Обновлено · {relativeTime(page.updatedAt)}
             {page.updatedByName ? ` · ${page.updatedByName}` : ""} ·{" "}
             {readingLabel(readingMinutes(page.content))}

@@ -5,8 +5,10 @@ import { Tour } from "./components/Tour";
 import { AuthProvider } from "./store/auth";
 import { BrandingProvider } from "./store/branding";
 import { ConfirmProvider } from "./store/confirm";
+import { FavoritesProvider } from "./store/favorites";
 import { PaletteProvider } from "./store/palette";
 import { SidebarProvider, useSidebar } from "./store/sidebar";
+import { TemplatesProvider } from "./store/templates";
 import { ToastProvider } from "./store/toast";
 import { TreeProvider } from "./store/tree";
 
@@ -14,7 +16,7 @@ import { TreeProvider } from "./store/tree";
 function Shell() {
   const { open, setOpen } = useSidebar();
   return (
-    <div className="flex h-screen overflow-hidden bg-paper font-sans text-body">
+    <div className="flex h-[calc(100vh/var(--ui-zoom,1))] overflow-hidden bg-paper font-sans text-body">
       {/* затемнение под выехавшим сайдбаром на мобильном */}
       {open && (
         <div
@@ -37,13 +39,17 @@ export function App() {
         <AuthProvider>
           <ConfirmProvider>
             <TreeProvider>
-              <SidebarProvider>
-                <PaletteProvider>
-                  <Shell />
-                  <CommandPalette />
-                  <Tour />
-                </PaletteProvider>
-              </SidebarProvider>
+              <FavoritesProvider>
+                <TemplatesProvider>
+                  <SidebarProvider>
+                    <PaletteProvider>
+                      <Shell />
+                      <CommandPalette />
+                      <Tour />
+                    </PaletteProvider>
+                  </SidebarProvider>
+                </TemplatesProvider>
+              </FavoritesProvider>
             </TreeProvider>
           </ConfirmProvider>
         </AuthProvider>

@@ -2,10 +2,12 @@ import { useEffect, useRef, useState } from "react";
 import { Check, Compass, Moon, SlidersHorizontal, Sun } from "lucide-react";
 import { setContentWidth, useContentWidth, WIDTH_LABEL, type ContentWidth } from "../lib/contentWidth";
 import { setTheme, useTheme, type Theme } from "../lib/theme";
+import { SCALE_LABEL, setUIScale, useUIScale, type UIScale } from "../lib/uiScale";
 import { startTour } from "../lib/tour";
 import { useBranding } from "../store/branding";
 
 const WIDTHS: ContentWidth[] = ["narrow", "medium", "wide"];
+const SCALES: UIScale[] = ["small", "medium", "large"];
 
 // Кнопка в топбаре с сабменю: оформление (светло/тёмно), ширина контента и
 // цветовая схема (из /api/branding, выбор сохраняется в localStorage).
@@ -13,6 +15,7 @@ const WIDTHS: ContentWidth[] = ["narrow", "medium", "wide"];
 export function DisplaySettings() {
   const theme = useTheme();
   const width = useContentWidth();
+  const scale = useUIScale();
   const { themes, schemeId, setScheme } = useBranding();
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -53,6 +56,16 @@ export function DisplaySettings() {
               <Segment active={theme === "dark"} onClick={() => setTheme("dark" as Theme)}>
                 <Moon className="h-4 w-4" /> Тёмное
               </Segment>
+            </div>
+          </Section>
+
+          <Section title="Размер интерфейса">
+            <div className="grid grid-cols-3 gap-1.5">
+              {SCALES.map((s) => (
+                <Segment key={s} active={scale === s} onClick={() => setUIScale(s)}>
+                  {SCALE_LABEL[s]}
+                </Segment>
+              ))}
             </div>
           </Section>
 

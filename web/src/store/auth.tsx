@@ -170,7 +170,7 @@ function LoginScreen() {
 
 function FullScreen({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-screen flex-col items-center justify-center bg-paper px-6 text-center font-sans text-body">
+    <div className="flex h-[calc(100vh/var(--ui-zoom,1))] flex-col items-center justify-center bg-paper px-6 text-center font-sans text-body">
       {children}
     </div>
   );

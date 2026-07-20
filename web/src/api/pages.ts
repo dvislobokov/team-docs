@@ -2,12 +2,14 @@
 import { request, upload } from "./client";
 import type {
   CreatePageRequest,
+  FavoriteItem,
   MovePageRequest,
   Page,
   PageTreeNode,
   Revision,
   RevisionDetail,
   SearchHit,
+  TemplateItem,
   TrashItem,
   UpdatePageRequest,
   UploadResponse,
@@ -86,4 +88,23 @@ export interface RecentPage {
 
 export function getRecentPages(signal?: AbortSignal): Promise<RecentPage[]> {
   return request<RecentPage[]>("/pages/recent", { signal });
+}
+
+/** Избранное текущего пользователя (по всем доступным проектам). */
+export function getFavorites(signal?: AbortSignal): Promise<FavoriteItem[]> {
+  return request<FavoriteItem[]>("/favorites", { signal });
+}
+
+export function addFavorite(pageId: number): Promise<void> {
+  return request<void>(`/pages/${pageId}/favorite`, { method: "PUT" });
+}
+
+export function removeFavorite(pageId: number): Promise<void> {
+  return request<void>(`/pages/${pageId}/favorite`, { method: "DELETE" });
+}
+
+/** Шаблоны проекта (редакторам; читателям бэкенд отдаёт пустой список). */
+export function getTemplates(projectId?: number, signal?: AbortSignal): Promise<TemplateItem[]> {
+  const qs = projectId ? `?project=${projectId}` : "";
+  return request<TemplateItem[]>(`/templates${qs}`, { signal });
 }

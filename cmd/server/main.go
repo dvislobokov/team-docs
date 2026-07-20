@@ -94,7 +94,13 @@ func main() {
 	auth.NewAdminHandler(pool, registry, authenticator).Register(adminGroup)
 	settings.NewHandler(settingsSvc).Register(adminGroup)
 	pages.RegisterMaintenance(adminGroup, pool, log)
-	pages.NewHandler(pool, authenticator, log).Register(api)
+	pagesHandler := pages.NewHandler(pool, authenticator, log)
+	pagesHandler.Register(api)
+	// Избранное — личная навигация, доступная и читателям: отдельная группа
+	// /api только с identity-middleware, без RequireEditor.
+	favAPI := srv.API()
+	favAPI.Use(auth.Middleware(authenticator, registry, log))
+	pagesHandler.RegisterFavorites(favAPI)
 	projects.NewHandler(pool, authenticator, log).Register(api)
 	uploads.NewHandler(pool, authenticator, log, settingsSvc.MaxUploadBytes).Register(api)
 	backup.NewHandler(pool, log, registry.Reset).Register(api, auth.RequireEditorStrict(authenticator, log))

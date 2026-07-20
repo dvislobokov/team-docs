@@ -89,6 +89,7 @@ func (h *Handler) Register(api *echo.Group) {
 	api.GET("/search", h.search)
 	api.GET("/pages/recent", h.recent)
 	api.GET("/tags", h.tags)
+	api.GET("/templates", h.templates)
 	api.GET("/trash", h.trash_)
 	api.POST("/pages/:id/restore", h.restore)
 	api.DELETE("/pages/:id/purge", h.purge)
@@ -111,6 +112,10 @@ type pageResponse struct {
 	// (роль в проекте, §10); UI прячет кнопки правки для читателей.
 	CanEdit bool     `json:"canEdit"`
 	Tags    []string `json:"tags"`
+	// IsTemplate — страница-шаблон (служебный раздел, скрыта из дерева/поиска).
+	IsTemplate bool `json:"isTemplate"`
+	// ProjectID — проект страницы; сайдбар переключается на него при открытии.
+	ProjectID int64 `json:"projectId"`
 }
 
 type createRequest struct {
@@ -119,6 +124,10 @@ type createRequest struct {
 	// ProjectID — проект для корневых страниц (по умолчанию 'main');
 	// у вложенных проект наследуется от родителя.
 	ProjectID *int64 `json:"projectId"`
+	// Template — создать страницу-шаблон (всегда корневая).
+	Template bool `json:"template"`
+	// TemplateID — создать страницу из шаблона (копия контента/тегов).
+	TemplateID *int64 `json:"templateId"`
 }
 
 type updateRequest struct {
@@ -192,17 +201,28 @@ func (h *Handler) create(c echo.Context) error {
 	if req.Title == "" {
 		req.Title = "Untitled"
 	}
+	if req.Template && req.TemplateID != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "template and templateId are mutually exclusive")
+	}
+	// Шаблоны всегда корневые — живут вне дерева страниц.
+	if req.Template && req.ParentID != nil {
+		return echo.NewHTTPError(http.StatusBadRequest, "template cannot have a parent")
+	}
 	ctx := c.Request().Context()
 
 	// Проект: у вложенной страницы — от родителя (который должен существовать
 	// и не лежать в корзине); у корневой — из запроса либо 'main'.
 	var projectID int64
 	if req.ParentID != nil {
-		if _, err := h.q.GetPageMeta(ctx, *req.ParentID); err != nil {
+		meta, err := h.q.GetPageMeta(ctx, *req.ParentID)
+		if err != nil {
 			if errors.Is(err, pgx.ErrNoRows) {
 				return echo.NewHTTPError(http.StatusBadRequest, "parent page not found")
 			}
 			return h.fail(c, err, "create page: check parent")
+		}
+		if meta.IsTemplate {
+			return echo.NewHTTPError(http.StatusBadRequest, "cannot create page under a template")
 		}
 		pid, err := h.q.GetPageProject(ctx, *req.ParentID)
 		if err != nil {
@@ -211,6 +231,16 @@ func (h *Handler) create(c echo.Context) error {
 		projectID = pid
 	} else if req.ProjectID != nil {
 		projectID = *req.ProjectID
+	} else if req.TemplateID != nil {
+		// Без явного проекта страница из шаблона создаётся в его проекте.
+		pid, err := h.q.GetPageProject(ctx, *req.TemplateID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return echo.NewHTTPError(http.StatusBadRequest, "template not found")
+		}
+		if err != nil {
+			return h.fail(c, err, "create page: template project")
+		}
+		projectID = pid
 	} else {
 		p, err := h.q.GetProjectByKey(ctx, "main")
 		if err != nil {
@@ -231,26 +261,67 @@ func (h *Handler) create(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusForbidden, "editing not allowed in this project")
 	}
 
+	// Создание из шаблона: копия контента/иконки/тегов в том же проекте.
+	if req.TemplateID != nil {
+		tplProject, err := h.q.GetPageProject(ctx, *req.TemplateID)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return echo.NewHTTPError(http.StatusBadRequest, "template not found")
+		}
+		if err != nil {
+			return h.fail(c, err, "create page: template project")
+		}
+		if tplProject != projectID {
+			return echo.NewHTTPError(http.StatusBadRequest, "template belongs to another project")
+		}
+		row, err := h.q.CreatePageFromTemplate(ctx, store.CreatePageFromTemplateParams{
+			ParentID:   req.ParentID,
+			AuthorID:   auth.UserID(c),
+			TemplateID: *req.TemplateID,
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return echo.NewHTTPError(http.StatusBadRequest, "template not found")
+		}
+		if err != nil {
+			return h.fail(c, err, "create page from template")
+		}
+		return c.JSON(http.StatusCreated, pageResponse{
+			Tags:      row.Tags,
+			CanEdit:   true,
+			ID:        row.ID,
+			ParentID:  row.ParentID,
+			Title:     row.Title,
+			Icon:      row.Icon,
+			Content:   json.RawMessage(row.Content),
+			Position:  row.Position,
+			Version:   row.Version,
+			UpdatedAt: row.UpdatedAt.Time,
+			ProjectID: row.ProjectID,
+		})
+	}
+
 	row, err := h.q.CreatePage(ctx, store.CreatePageParams{
-		ParentID:  req.ParentID,
-		Title:     req.Title,
-		AuthorID:  auth.UserID(c),
-		ProjectID: projectID,
+		ParentID:   req.ParentID,
+		Title:      req.Title,
+		AuthorID:   auth.UserID(c),
+		ProjectID:  projectID,
+		IsTemplate: req.Template,
 	})
 	if err != nil {
 		return h.fail(c, err, "create page")
 	}
 	return c.JSON(http.StatusCreated, pageResponse{
-		Tags:      []string{},
-		CanEdit:   true,
-		ID:        row.ID,
-		ParentID:  row.ParentID,
-		Title:     row.Title,
-		Icon:      row.Icon,
-		Content:   json.RawMessage(row.Content),
-		Position:  row.Position,
-		Version:   row.Version,
-		UpdatedAt: row.UpdatedAt.Time,
+		Tags:       []string{},
+		CanEdit:    true,
+		ID:         row.ID,
+		ParentID:   row.ParentID,
+		Title:      row.Title,
+		Icon:       row.Icon,
+		Content:    json.RawMessage(row.Content),
+		Position:   row.Position,
+		Version:    row.Version,
+		UpdatedAt:  row.UpdatedAt.Time,
+		IsTemplate: req.Template,
+		ProjectID:  row.ProjectID,
 	})
 }
 
@@ -285,6 +356,8 @@ func (h *Handler) get(c echo.Context) error {
 		UpdatedByName: row.UpdatedByName,
 		CanEdit:       projects.CanWrite(role),
 		Tags:          row.Tags,
+		IsTemplate:    row.IsTemplate,
+		ProjectID:     row.ProjectID,
 	})
 }
 
@@ -345,6 +418,8 @@ func (h *Handler) update(c echo.Context) error {
 		UpdatedByName: updatedBy,
 		CanEdit:       true, // guardWrite уже пройден
 		Tags:          row.Tags,
+		ProjectID:     row.ProjectID,
+		IsTemplate:    row.IsTemplate,
 	})
 }
 
@@ -383,8 +458,16 @@ func (h *Handler) move(c echo.Context) error {
 	if err := h.guardWrite(c, id); err != nil {
 		return err
 	}
+	// Шаблоны в дереве не участвуют — их не переносим.
+	if meta, err := h.q.GetPageMeta(c.Request().Context(), id); err == nil && meta.IsTemplate {
+		return echo.NewHTTPError(http.StatusBadRequest, "cannot move a template")
+	}
 	// Перенос между проектами запрещён: родитель — из проекта страницы.
 	if req.ParentID != nil {
+		parentMeta, err := h.q.GetPageMeta(c.Request().Context(), *req.ParentID)
+		if err != nil || parentMeta.IsTemplate {
+			return echo.NewHTTPError(http.StatusBadRequest, "parent page not found")
+		}
 		pageProj, err1 := h.q.GetPageProject(c.Request().Context(), id)
 		parentProj, err2 := h.q.GetPageProject(c.Request().Context(), *req.ParentID)
 		if err1 != nil || err2 != nil {
@@ -520,6 +603,54 @@ func (h *Handler) tags(c echo.Context) error {
 	out := make([]tag, 0, len(rows))
 	for _, r := range rows {
 		out = append(out, tag{Tag: r.Tag, Pages: r.Pages})
+	}
+	return c.JSON(http.StatusOK, out)
+}
+
+// templates отдаёт шаблоны проекта (?project=<id>; по умолчанию main).
+// Служебный раздел для редакторов: читателям — пустой список.
+func (h *Handler) templates(c echo.Context) error {
+	ctx := c.Request().Context()
+	var project store.Project
+	var err error
+	if raw := c.QueryParam("project"); raw != "" {
+		id, perr := strconv.ParseInt(raw, 10, 64)
+		if perr != nil {
+			return echo.NewHTTPError(http.StatusBadRequest, "invalid project")
+		}
+		project, err = h.q.GetProject(ctx, id)
+	} else {
+		project, err = h.q.GetProjectByKey(ctx, "main")
+	}
+	if errors.Is(err, pgx.ErrNoRows) {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
+	}
+	if err != nil {
+		return h.fail(c, err, "get project")
+	}
+	u, _ := auth.FromContext(c)
+	role, err := projects.RoleFor(ctx, h.q, h.a, u, project)
+	if err != nil {
+		return h.fail(c, err, "resolve project role")
+	}
+	if !projects.CanRead(role) {
+		return echo.NewHTTPError(http.StatusNotFound, "project not found")
+	}
+	type tpl struct {
+		ID        int64     `json:"id"`
+		Title     string    `json:"title"`
+		Icon      string    `json:"icon"`
+		UpdatedAt time.Time `json:"updatedAt"`
+	}
+	out := []tpl{}
+	if projects.CanWrite(role) {
+		rows, err := h.q.ListTemplates(ctx, project.ID)
+		if err != nil {
+			return h.fail(c, err, "list templates")
+		}
+		for _, r := range rows {
+			out = append(out, tpl{ID: r.ID, Title: r.Title, Icon: r.Icon, UpdatedAt: r.UpdatedAt.Time})
+		}
 	}
 	return c.JSON(http.StatusOK, out)
 }

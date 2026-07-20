@@ -37,20 +37,21 @@ func (q *Queries) CountSiblings(ctx context.Context, arg CountSiblingsParams) (i
 }
 
 const createPage = `-- name: CreatePage :one
-INSERT INTO pages (parent_id, title, position, created_by, updated_by, project_id)
+INSERT INTO pages (parent_id, title, position, created_by, updated_by, project_id, is_template)
 VALUES ($1, $2, COALESCE(
     (SELECT MAX(position) + 1 FROM pages
      WHERE parent_id IS NOT DISTINCT FROM $1 AND deleted_at IS NULL),
     0
-), $3, $3, $4)
-RETURNING id, parent_id, title, icon, content, position, version, created_at, updated_at
+), $3, $3, $4, $5)
+RETURNING id, parent_id, title, icon, content, position, version, project_id, created_at, updated_at
 `
 
 type CreatePageParams struct {
-	ParentID  *int64 `json:"parent_id"`
-	Title     string `json:"title"`
-	AuthorID  *int64 `json:"author_id"`
-	ProjectID int64  `json:"project_id"`
+	ParentID   *int64 `json:"parent_id"`
+	Title      string `json:"title"`
+	AuthorID   *int64 `json:"author_id"`
+	ProjectID  int64  `json:"project_id"`
+	IsTemplate bool   `json:"is_template"`
 }
 
 type CreatePageRow struct {
@@ -61,6 +62,7 @@ type CreatePageRow struct {
 	Content   []byte             `json:"content"`
 	Position  int32              `json:"position"`
 	Version   int32              `json:"version"`
+	ProjectID int64              `json:"project_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 }
@@ -71,6 +73,7 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 		arg.Title,
 		arg.AuthorID,
 		arg.ProjectID,
+		arg.IsTemplate,
 	)
 	var i CreatePageRow
 	err := row.Scan(
@@ -81,6 +84,64 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 		&i.Content,
 		&i.Position,
 		&i.Version,
+		&i.ProjectID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const createPageFromTemplate = `-- name: CreatePageFromTemplate :one
+INSERT INTO pages (parent_id, title, icon, content, content_text, tags, position,
+                   created_by, updated_by, project_id)
+SELECT $1, t.title, t.icon, t.content, t.content_text, t.tags,
+       COALESCE(
+           (SELECT MAX(p.position) + 1 FROM pages p
+            WHERE p.parent_id IS NOT DISTINCT FROM $1
+              AND p.deleted_at IS NULL),
+           0
+       ),
+       $2, $2, t.project_id
+FROM pages t
+WHERE t.id = $3 AND t.deleted_at IS NULL AND t.is_template
+RETURNING id, parent_id, title, icon, content, position, version, tags, project_id, created_at, updated_at
+`
+
+type CreatePageFromTemplateParams struct {
+	ParentID   *int64 `json:"parent_id"`
+	AuthorID   *int64 `json:"author_id"`
+	TemplateID int64  `json:"template_id"`
+}
+
+type CreatePageFromTemplateRow struct {
+	ID        int64              `json:"id"`
+	ParentID  *int64             `json:"parent_id"`
+	Title     string             `json:"title"`
+	Icon      string             `json:"icon"`
+	Content   []byte             `json:"content"`
+	Position  int32              `json:"position"`
+	Version   int32              `json:"version"`
+	Tags      []string           `json:"tags"`
+	ProjectID int64              `json:"project_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+// «Создать из шаблона»: копия заголовка/иконки/контента/тегов шаблона
+// обычной страницей (у создаваемой is_template = FALSE).
+func (q *Queries) CreatePageFromTemplate(ctx context.Context, arg CreatePageFromTemplateParams) (CreatePageFromTemplateRow, error) {
+	row := q.db.QueryRow(ctx, createPageFromTemplate, arg.ParentID, arg.AuthorID, arg.TemplateID)
+	var i CreatePageFromTemplateRow
+	err := row.Scan(
+		&i.ID,
+		&i.ParentID,
+		&i.Title,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.Version,
+		&i.Tags,
+		&i.ProjectID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)
@@ -89,7 +150,7 @@ func (q *Queries) CreatePage(ctx context.Context, arg CreatePageParams) (CreateP
 
 const getPage = `-- name: GetPage :one
 SELECT p.id, p.parent_id, p.title, p.icon, p.content, p.position, p.version,
-       p.tags, p.created_at, p.updated_at,
+       p.tags, p.is_template, p.project_id, p.created_at, p.updated_at,
        u.name AS updated_by_name
 FROM pages p
 LEFT JOIN users u ON u.id = p.updated_by
@@ -105,6 +166,8 @@ type GetPageRow struct {
 	Position      int32              `json:"position"`
 	Version       int32              `json:"version"`
 	Tags          []string           `json:"tags"`
+	IsTemplate    bool               `json:"is_template"`
+	ProjectID     int64              `json:"project_id"`
 	CreatedAt     pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt     pgtype.Timestamptz `json:"updated_at"`
 	UpdatedByName *string            `json:"updated_by_name"`
@@ -122,6 +185,8 @@ func (q *Queries) GetPage(ctx context.Context, id int64) (GetPageRow, error) {
 		&i.Position,
 		&i.Version,
 		&i.Tags,
+		&i.IsTemplate,
+		&i.ProjectID,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.UpdatedByName,
@@ -130,29 +195,35 @@ func (q *Queries) GetPage(ctx context.Context, id int64) (GetPageRow, error) {
 }
 
 const getPageMeta = `-- name: GetPageMeta :one
-SELECT id, parent_id, position
+SELECT id, parent_id, position, is_template
 FROM pages
 WHERE id = $1 AND deleted_at IS NULL
 `
 
 type GetPageMetaRow struct {
-	ID       int64  `json:"id"`
-	ParentID *int64 `json:"parent_id"`
-	Position int32  `json:"position"`
+	ID         int64  `json:"id"`
+	ParentID   *int64 `json:"parent_id"`
+	Position   int32  `json:"position"`
+	IsTemplate bool   `json:"is_template"`
 }
 
 // Лёгкое чтение для move/проверок: родитель и позиция без контента.
 func (q *Queries) GetPageMeta(ctx context.Context, id int64) (GetPageMetaRow, error) {
 	row := q.db.QueryRow(ctx, getPageMeta, id)
 	var i GetPageMetaRow
-	err := row.Scan(&i.ID, &i.ParentID, &i.Position)
+	err := row.Scan(
+		&i.ID,
+		&i.ParentID,
+		&i.Position,
+		&i.IsTemplate,
+	)
 	return i, err
 }
 
 const getPageTree = `-- name: GetPageTree :many
 SELECT id, parent_id, title, icon, position
 FROM pages
-WHERE deleted_at IS NULL AND project_id = $1
+WHERE deleted_at IS NULL AND project_id = $1 AND NOT is_template
 ORDER BY parent_id NULLS FIRST, position, id
 `
 
@@ -164,7 +235,8 @@ type GetPageTreeRow struct {
 	Position int32  `json:"position"`
 }
 
-// Плоский список для построения дерева в сайдбаре (без корзины), по проекту.
+// Плоский список для построения дерева в сайдбаре (без корзины и шаблонов),
+// по проекту.
 func (q *Queries) GetPageTree(ctx context.Context, projectID int64) ([]GetPageTreeRow, error) {
 	rows, err := q.db.Query(ctx, getPageTree, projectID)
 	if err != nil {
@@ -307,7 +379,7 @@ const listTags = `-- name: ListTags :many
 SELECT t.tag::text AS tag, COUNT(*) AS pages
 FROM pages p
 CROSS JOIN unnest(p.tags) AS t(tag)
-WHERE p.deleted_at IS NULL AND p.project_id = $1
+WHERE p.deleted_at IS NULL AND NOT p.is_template AND p.project_id = $1
 GROUP BY t.tag
 ORDER BY COUNT(*) DESC, t.tag
 `
@@ -328,6 +400,46 @@ func (q *Queries) ListTags(ctx context.Context, projectID int64) ([]ListTagsRow,
 	for rows.Next() {
 		var i ListTagsRow
 		if err := rows.Scan(&i.Tag, &i.Pages); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTemplates = `-- name: ListTemplates :many
+SELECT id, title, icon, updated_at
+FROM pages
+WHERE is_template AND deleted_at IS NULL AND project_id = $1
+ORDER BY title, id
+`
+
+type ListTemplatesRow struct {
+	ID        int64              `json:"id"`
+	Title     string             `json:"title"`
+	Icon      string             `json:"icon"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+}
+
+// Шаблоны проекта для секции в сайдбаре.
+func (q *Queries) ListTemplates(ctx context.Context, projectID int64) ([]ListTemplatesRow, error) {
+	rows, err := q.db.Query(ctx, listTemplates, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListTemplatesRow{}
+	for rows.Next() {
+		var i ListTemplatesRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Icon,
+			&i.UpdatedAt,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -436,6 +548,7 @@ SELECT p.id, p.title, p.icon, p.updated_at, p.project_id,
 FROM pages p
 LEFT JOIN users u ON u.id = p.updated_by
 WHERE p.deleted_at IS NULL
+  AND NOT p.is_template
   AND p.project_id = ANY($1::bigint[])
 ORDER BY p.updated_at DESC
 LIMIT 12
@@ -485,6 +598,7 @@ SELECT id, parent_id, title, icon,
 FROM pages
 WHERE search_vector @@ plainto_tsquery('russian', $1)
   AND deleted_at IS NULL
+  AND NOT is_template
   AND project_id = ANY($2::bigint[])
   AND ($3::text IS NULL OR tags @> ARRAY[$3::text])
 ORDER BY ts_rank(search_vector, plainto_tsquery('russian', $1)) DESC
@@ -588,7 +702,7 @@ SET title        = $2,
 WHERE id = $1
   AND version = $5
   AND deleted_at IS NULL
-RETURNING id, parent_id, title, icon, content, position, version, tags, created_at, updated_at
+RETURNING id, parent_id, title, icon, content, position, version, tags, project_id, is_template, created_at, updated_at
 `
 
 type UpdatePageParams struct {
@@ -603,16 +717,18 @@ type UpdatePageParams struct {
 }
 
 type UpdatePageRow struct {
-	ID        int64              `json:"id"`
-	ParentID  *int64             `json:"parent_id"`
-	Title     string             `json:"title"`
-	Icon      string             `json:"icon"`
-	Content   []byte             `json:"content"`
-	Position  int32              `json:"position"`
-	Version   int32              `json:"version"`
-	Tags      []string           `json:"tags"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ID         int64              `json:"id"`
+	ParentID   *int64             `json:"parent_id"`
+	Title      string             `json:"title"`
+	Icon       string             `json:"icon"`
+	Content    []byte             `json:"content"`
+	Position   int32              `json:"position"`
+	Version    int32              `json:"version"`
+	Tags       []string           `json:"tags"`
+	ProjectID  int64              `json:"project_id"`
+	IsTemplate bool               `json:"is_template"`
+	CreatedAt  pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt  pgtype.Timestamptz `json:"updated_at"`
 }
 
 // Optimistic lock: обновит строку только если version совпадает.
@@ -638,6 +754,8 @@ func (q *Queries) UpdatePage(ctx context.Context, arg UpdatePageParams) (UpdateP
 		&i.Position,
 		&i.Version,
 		&i.Tags,
+		&i.ProjectID,
+		&i.IsTemplate,
 		&i.CreatedAt,
 		&i.UpdatedAt,
 	)

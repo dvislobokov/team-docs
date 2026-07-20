@@ -33,6 +33,7 @@ type Dump struct {
 	Revisions     []RevisionRow     `json:"revisions"`
 	Files         []FileRow         `json:"files"`
 	Diagrams      []DiagramRow      `json:"diagrams"`
+	Favorites     []FavoriteRow     `json:"favorites,omitempty"`
 }
 
 type UserRow struct {
@@ -91,11 +92,18 @@ type PageRow struct {
 	CreatedAt   time.Time       `json:"createdAt"`
 	UpdatedAt   time.Time       `json:"updatedAt"`
 	// v2: проект, авторство, корзина, теги. В v1-дампах отсутствуют.
-	ProjectID int64      `json:"projectId,omitempty"`
-	CreatedBy *int64     `json:"createdBy,omitempty"`
-	UpdatedBy *int64     `json:"updatedBy,omitempty"`
-	DeletedAt *time.Time `json:"deletedAt,omitempty"`
-	Tags      []string   `json:"tags,omitempty"`
+	ProjectID  int64      `json:"projectId,omitempty"`
+	CreatedBy  *int64     `json:"createdBy,omitempty"`
+	UpdatedBy  *int64     `json:"updatedBy,omitempty"`
+	DeletedAt  *time.Time `json:"deletedAt,omitempty"`
+	Tags       []string   `json:"tags,omitempty"`
+	IsTemplate bool       `json:"isTemplate,omitempty"`
+}
+
+type FavoriteRow struct {
+	UserID    int64     `json:"userId"`
+	PageID    int64     `json:"pageId"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 type RevisionRow struct {
@@ -226,14 +234,16 @@ func (s *Service) Export(ctx context.Context) (*Dump, error) {
 
 	if err := s.eachRow(ctx,
 		`SELECT id, parent_id, title, content, content_text, position, version, icon,
-		        created_at, updated_at, project_id, created_by, updated_by, deleted_at, tags
+		        created_at, updated_at, project_id, created_by, updated_by, deleted_at, tags,
+		        is_template
 		 FROM pages ORDER BY id`,
 		func(rows pgx.Rows) error {
 			var p PageRow
 			var content []byte
 			if err := rows.Scan(&p.ID, &p.ParentID, &p.Title, &content, &p.ContentText,
 				&p.Position, &p.Version, &p.Icon, &p.CreatedAt, &p.UpdatedAt,
-				&p.ProjectID, &p.CreatedBy, &p.UpdatedBy, &p.DeletedAt, &p.Tags); err != nil {
+				&p.ProjectID, &p.CreatedBy, &p.UpdatedBy, &p.DeletedAt, &p.Tags,
+				&p.IsTemplate); err != nil {
 				return err
 			}
 			p.Content = json.RawMessage(content)
@@ -272,6 +282,19 @@ func (s *Service) Export(ctx context.Context) (*Dump, error) {
 			return nil
 		}); err != nil {
 		return nil, fmt.Errorf("export files: %w", err)
+	}
+
+	if err := s.eachRow(ctx,
+		`SELECT user_id, page_id, created_at FROM favorites ORDER BY user_id, page_id`,
+		func(rows pgx.Rows) error {
+			var f FavoriteRow
+			if err := rows.Scan(&f.UserID, &f.PageID, &f.CreatedAt); err != nil {
+				return err
+			}
+			d.Favorites = append(d.Favorites, f)
+			return nil
+		}); err != nil {
+		return nil, fmt.Errorf("export favorites: %w", err)
 	}
 
 	if err := s.eachRow(ctx,
@@ -421,10 +444,12 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 		}
 		if _, err := tx.Exec(ctx,
 			`INSERT INTO pages (id, parent_id, title, content, content_text, position, version, icon,
-			                    created_at, updated_at, project_id, created_by, updated_by, deleted_at, tags)
-			 OVERRIDING SYSTEM VALUE VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
+			                    created_at, updated_at, project_id, created_by, updated_by, deleted_at, tags,
+			                    is_template)
+			 OVERRIDING SYSTEM VALUE VALUES ($1, NULL, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)`,
 			p.ID, p.Title, []byte(content), p.ContentText, p.Position, p.Version, p.Icon,
 			p.CreatedAt, p.UpdatedAt, projectID, p.CreatedBy, p.UpdatedBy, p.DeletedAt, tags,
+			p.IsTemplate,
 		); err != nil {
 			return fmt.Errorf("вставка страницы %d: %w", p.ID, err)
 		}
@@ -460,6 +485,15 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 			f.ID, f.PageID, f.Filename, f.Mime, f.Size, f.Content, f.CreatedAt,
 		); err != nil {
 			return fmt.Errorf("вставка файла %s: %w", f.ID, err)
+		}
+	}
+
+	for _, f := range d.Favorites {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO favorites (user_id, page_id, created_at) VALUES ($1, $2, $3)`,
+			f.UserID, f.PageID, f.CreatedAt,
+		); err != nil {
+			return fmt.Errorf("вставка избранного %d/%d: %w", f.UserID, f.PageID, err)
 		}
 	}
 

@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Settings, Trash2, Upload } from "lucide-react";
+import { ClipboardPaste, LayoutTemplate, LogOut, PanelLeftClose, Plus, Search, Settings, Star, Trash2, Upload } from "lucide-react";
 import { createPage } from "../api/pages";
 import { useAuth } from "../store/auth";
 import { useBranding } from "../store/branding";
+import { useFavorites } from "../store/favorites";
 import { usePalette } from "../store/palette";
 import { useSidebar } from "../store/sidebar";
+import { useTemplates } from "../store/templates";
 import { useTree } from "../store/tree";
 import { ImportMarkdown } from "./ImportMarkdown";
 import { PasteMarkdown } from "./PasteMarkdown";
@@ -19,6 +21,8 @@ export function Sidebar() {
   const { setOpen: setPaletteOpen } = usePalette();
   const { open, setOpen } = useSidebar();
   const { reload, project } = useTree();
+  const { favorites } = useFavorites();
+  const { templates, reload: reloadTemplates } = useTemplates();
   const user = useAuth();
   const branding = useBranding();
   const navigate = useNavigate();
@@ -47,6 +51,25 @@ export function Sidebar() {
       setBusy(false);
     }
   };
+
+  const newTemplate = async () => {
+    if (busy) return;
+    setBusy(true);
+    try {
+      const page = await createPage({
+        parentId: null,
+        title: "Новый шаблон",
+        projectId: project?.id,
+        template: true,
+      });
+      await reloadTemplates();
+      navigate(`/pages/${page.id}`, { state: { isNew: true } });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const canEditProject = user.canEdit && project?.myRole !== "reader";
 
   return (
     <aside
@@ -99,9 +122,33 @@ export function Sidebar() {
 
       {/* дерево */}
       <nav data-tour="tree" className="scroll flex-1 overflow-y-auto px-2 pb-4 text-[15px]">
+        {/* избранное (личное, по всем доступным проектам) */}
+        {favorites.length > 0 && (
+          <div className="pb-1">
+            <div className="flex items-center gap-1.5 px-2 pb-1 pt-3 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+              <Star className="h-3 w-3" />
+              Избранное
+            </div>
+            {favorites.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                onClick={() => navigate(`/pages/${f.id}`)}
+                className={
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[14px] transition hover:bg-line/40 " +
+                  (location.pathname === `/pages/${f.id}` ? "bg-line/50 text-ink" : "text-body")
+                }
+              >
+                <span className="w-4 shrink-0 text-center text-[13px]">{f.icon || "📄"}</span>
+                <span className="truncate">{f.title || "Без названия"}</span>
+              </button>
+            ))}
+          </div>
+        )}
+
         <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-3">
           <ProjectSwitcher />
-          {user.canEdit && project?.myRole !== "reader" && (
+          {canEditProject && (
             <span className="flex items-center gap-0.5">
               <ImportMarkdown
                 title="Импорт из файла Markdown"
@@ -130,6 +177,44 @@ export function Sidebar() {
         </div>
 
         <TreeNav />
+
+        {/* шаблоны проекта (служебный раздел, только редакторам) */}
+        {canEditProject && (
+          <div className="pt-3">
+            <div className="flex items-center justify-between gap-2 px-2 pb-1">
+              <span className="flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-[0.06em] text-faint">
+                <LayoutTemplate className="h-3 w-3" />
+                Шаблоны
+              </span>
+              <button
+                type="button"
+                onClick={newTemplate}
+                className="rounded p-0.5 text-faint transition hover:bg-line/70 hover:text-ink"
+                title="Новый шаблон"
+                disabled={busy}
+              >
+                <Plus className="h-3.5 w-3.5" />
+              </button>
+            </div>
+            {templates.map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => navigate(`/pages/${t.id}`)}
+                className={
+                  "flex w-full items-center gap-2 rounded-lg px-2 py-1 text-left text-[14px] transition hover:bg-line/40 " +
+                  (location.pathname === `/pages/${t.id}` ? "bg-line/50 text-ink" : "text-body")
+                }
+              >
+                <span className="w-4 shrink-0 text-center text-[13px]">{t.icon || "📐"}</span>
+                <span className="truncate">{t.title || "Без названия"}</span>
+              </button>
+            ))}
+            {templates.length === 0 && (
+              <p className="px-2 py-1 text-[12px] text-faint">Нет шаблонов</p>
+            )}
+          </div>
+        )}
       </nav>
 
       {/* корзина (редакторам) и админка (админам) */}

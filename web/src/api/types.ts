@@ -21,6 +21,10 @@ export interface Page {
   /** Право правки текущего пользователя в проекте страницы (§10). */
   canEdit: boolean;
   tags: string[];
+  /** Страница-шаблон (служебный раздел, скрыта из дерева/поиска). */
+  isTemplate: boolean;
+  /** Проект страницы; сайдбар переключается на него при открытии. */
+  projectId: number;
 }
 
 /** Узел плоского списка дерева (GET /api/pages/tree). */
@@ -37,6 +41,27 @@ export interface CreatePageRequest {
   title: string;
   /** Проект для корневых страниц (по умолчанию 'main'). */
   projectId?: number;
+  /** Создать страницу-шаблон (всегда корневая, вне дерева). */
+  template?: boolean;
+  /** Создать страницу из шаблона (копия контента/иконки/тегов). */
+  templateId?: number;
+}
+
+/** Избранная страница (GET /api/favorites). */
+export interface FavoriteItem {
+  id: number;
+  title: string;
+  icon: string;
+  projectId: number;
+  createdAt: string;
+}
+
+/** Шаблон проекта (GET /api/templates). */
+export interface TemplateItem {
+  id: number;
+  title: string;
+  icon: string;
+  updatedAt: string;
 }
 
 export interface UpdatePageRequest {
