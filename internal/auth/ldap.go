@@ -352,6 +352,39 @@ func (l *LDAPAuthenticator) IsAdminGroupMember(groups []string) bool {
 	return false
 }
 
+// Check — диагностика для админки («Проверить авторизацию»): во что
+// развернулся bindLogin, доступен ли каталог, проходит ли сервисный bind.
+func (l *LDAPAuthenticator) Check() map[string]any {
+	out := map[string]any{
+		"url":    l.cfg.URL,
+		"preset": l.cfg.Preset,
+	}
+	if bindName := l.resolveBindName(); bindName != "" {
+		out["bindName"] = bindName
+	} else if tpl := l.resolveUserBindName("<login>"); tpl != "" {
+		out["directBind"] = tpl
+	} else {
+		out["warning"] = "не заданы ни bindLogin, ни userLoginTemplate — вход не заработает"
+	}
+
+	conn, err := l.dial()
+	if err != nil {
+		out["connect"] = "ошибка: " + err.Error()
+		return out
+	}
+	defer conn.Close()
+	out["connect"] = "ok"
+
+	if bindName := l.resolveBindName(); bindName != "" {
+		if err := conn.Bind(bindName, l.cfg.BindPassword); err != nil {
+			out["serviceBind"] = "ошибка: " + err.Error()
+		} else {
+			out["serviceBind"] = "ok"
+		}
+	}
+	return out
+}
+
 // firstRDNValue: cn=docs-admins,ou=groups,… → docs-admins.
 func firstRDNValue(dn string) string {
 	first := strings.SplitN(dn, ",", 2)[0]

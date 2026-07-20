@@ -76,6 +76,18 @@ func (h *AdminHandler) authCheck(c echo.Context) error {
 	if cfg.PublicURL == "" && len(providers) > 0 {
 		out["warning"] = "auth.publicUrl не задан — redirect_uri провайдеров будет неверным"
 	}
+
+	// LDAP: разворот bindLogin, доступность каталога, сервисный bind.
+	if cfg.LDAP.URL != "" {
+		if l, err := NewLDAP(cfg.LDAP); err != nil {
+			out["ldap"] = map[string]any{"error": err.Error()}
+		} else {
+			out["ldap"] = l.Check()
+		}
+	}
+	if cfg.LocalAdmin.Username != "" {
+		out["localAdmin"] = cfg.LocalAdmin.Username
+	}
 	return c.JSON(http.StatusOK, out)
 }
 

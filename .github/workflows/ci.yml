@@ -55,6 +55,14 @@ jobs:
           --health-interval 2s
           --health-timeout 3s
           --health-retries 20
+      ldap:
+        image: osixia/openldap:1.5.0
+        env:
+          LDAP_ORGANISATION: Team Docs
+          LDAP_DOMAIN: corp.local
+          LDAP_ADMIN_PASSWORD: adminpass
+        ports:
+          - 38900:389
     steps:
       - uses: actions/checkout@v4
 
@@ -75,10 +83,12 @@ jobs:
       # Dev-сборка (без тега prod — фронт не встраивается).
       - run: go build ./...
 
-      # Юнит + интеграционные (Postgres из services; DSN как в docker-compose.test.yml).
+      # Юнит + интеграционные (Postgres и OpenLDAP из services;
+      # адреса как в docker-compose.test.yml).
       - name: go test
         env:
           TEAMDOCS_TEST_DSN: postgres://teamdocs:teamdocs@localhost:54329/teamdocs_test?sslmode=disable
+          TEAMDOCS_TEST_LDAP_URL: ldap://localhost:38900
         run: go test ./...
 
       - name: sqlc сгенерирован из актуальных запросов

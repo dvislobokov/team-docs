@@ -12,6 +12,7 @@ import (
 	"os"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/dvislobokov/srog"
 	"github.com/go-ldap/ldap/v3"
@@ -139,9 +140,20 @@ const (
 // docs-admins (member: ivanov). Идемпотентно.
 func seedLDAP(t *testing.T, url string) {
 	t.Helper()
-	conn, err := ldap.DialURL(url)
-	if err != nil {
-		t.Skipf("LDAP недоступен: %v", err)
+	// TEAMDOCS_TEST_LDAP_URL задан явно → каталог обязан подняться; в CI
+	// osixia/openldap стартует несколько секунд — ждём с ретраями.
+	var conn *ldap.Conn
+	var err error
+	deadline := time.Now().Add(30 * time.Second)
+	for {
+		conn, err = ldap.DialURL(url)
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("LDAP не поднялся за 30с: %v", err)
+		}
+		time.Sleep(time.Second)
 	}
 	defer conn.Close()
 	if err := conn.Bind(ldapTestAdmin, ldapTestPass); err != nil {
@@ -231,5 +243,11 @@ func TestOpenLDAPIntegration(t *testing.T) {
 	// Пустой пароль (анонимный bind) — отклоняется.
 	if _, err := l.Authenticate("ivanov", ""); err != ErrLDAPAuth {
 		t.Fatalf("пустой пароль: %v", err)
+	}
+
+	// Диагностика «Проверить авторизацию»: разворот bindLogin + сервисный bind.
+	check := l.Check()
+	if check["connect"] != "ok" || check["serviceBind"] != "ok" || check["bindName"] != ldapTestAdmin {
+		t.Fatalf("check: %v", check)
 	}
 }
