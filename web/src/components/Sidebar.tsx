@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { ChevronsUpDown, ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Settings, Trash2, Upload } from "lucide-react";
+import { ClipboardPaste, LogOut, PanelLeftClose, Plus, Search, Settings, Trash2, Upload } from "lucide-react";
 import { createPage } from "../api/pages";
 import { useAuth } from "../store/auth";
 import { useBranding } from "../store/branding";
@@ -9,6 +9,7 @@ import { useSidebar } from "../store/sidebar";
 import { useTree } from "../store/tree";
 import { ImportMarkdown } from "./ImportMarkdown";
 import { PasteMarkdown } from "./PasteMarkdown";
+import { ProjectSwitcher } from "./ProjectSwitcher";
 import { TrashDialog } from "./TrashDialog";
 import { TreeNav } from "./TreeNav";
 
@@ -17,7 +18,7 @@ import { TreeNav } from "./TreeNav";
 export function Sidebar() {
   const { setOpen: setPaletteOpen } = usePalette();
   const { open, setOpen } = useSidebar();
-  const { reload, projects, project, setProject } = useTree();
+  const { reload, project } = useTree();
   const user = useAuth();
   const branding = useBranding();
   const navigate = useNavigate();
@@ -99,24 +100,7 @@ export function Sidebar() {
       {/* дерево */}
       <nav data-tour="tree" className="scroll flex-1 overflow-y-auto px-2 pb-4 text-[15px]">
         <div className="flex items-center justify-between gap-2 px-2 pb-1 pt-3">
-          {/* Переключатель проекта: явная кнопка-селект с шевроном. */}
-          <span className="relative flex min-w-0 flex-1 items-center" title="Сменить проект">
-            <select
-              value={project?.key ?? ""}
-              onChange={(e) => {
-                const p = projects.find((x) => x.key === e.target.value);
-                if (p) setProject(p);
-              }}
-              className="w-full cursor-pointer appearance-none truncate rounded-md border border-transparent bg-transparent py-0.5 pl-1 pr-5 text-[11px] font-600 uppercase tracking-[0.08em] text-faint outline-none transition hover:border-line hover:text-ink"
-            >
-              {projects.map((p) => (
-                <option key={p.key} value={p.key}>
-                  {p.icon ? `${p.icon} ` : ""}{p.name}
-                </option>
-              ))}
-            </select>
-            <ChevronsUpDown className="pointer-events-none absolute right-1 h-3 w-3 text-faint" />
-          </span>
+          <ProjectSwitcher />
           {user.canEdit && project?.myRole !== "reader" && (
             <span className="flex items-center gap-0.5">
               <ImportMarkdown

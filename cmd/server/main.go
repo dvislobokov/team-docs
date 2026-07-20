@@ -2,11 +2,7 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
-	"os"
-
-	"github.com/dvislobokov/sconf"
 	"github.com/dvislobokov/srog"
 	"github.com/labstack/echo/v4"
 
@@ -28,9 +24,6 @@ func main() {
 
 	cfg, err := config.Load()
 	if err != nil {
-		if errors.Is(err, sconf.ErrHelp) {
-			os.Exit(0)
-		}
 		log.Fatal(err, "failed to load config")
 	}
 
