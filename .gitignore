@@ -16,6 +16,8 @@ go.work.sum
 
 # ── Фронтенд (Vite) ─────────────────────────────────
 /web/node_modules/
+# lock не коммитим: разные мажоры npm генерируют несовместимые lock-файлы
+/web/package-lock.json
 /web/dist/
 /web/dist-ssr/
 /web/*.local
@@ -51,6 +53,3 @@ appsettings.local.yaml
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# lock не коммитим: разные мажоры npm генерируют несовместимые lock-файлы
-web/package-lock.json
