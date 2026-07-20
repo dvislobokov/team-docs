@@ -43,16 +43,16 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Без package-lock (решение: разные мажоры npm генерируют несовместимые
+      # lock-файлы) — ставим по диапазонам из package.json.
       - uses: actions/setup-node@v4
         with:
-          node-version: 24 # тот же major, что и локально: lock из npm 11 не читается npm 10
-          cache: npm
-          cache-dependency-path: web/package-lock.json
+          node-version: 24
 
       - name: Сборка фронта
         working-directory: web
         run: |
-          npm ci
+          npm install --no-audit --no-fund
           npm run build
 
       - uses: actions/setup-go@v5

@@ -6,8 +6,10 @@
 # --- 1. Фронтенд ---
 FROM node:24-alpine AS web
 WORKDIR /src/web
-COPY web/package.json web/package-lock.json ./
-RUN npm ci
+# Без package-lock (разные мажоры npm генерируют несовместимые lock-файлы) —
+# зависимости ставятся по диапазонам из package.json.
+COPY web/package.json ./
+RUN npm install --no-audit --no-fund
 COPY web/ ./
 RUN npm run build
 

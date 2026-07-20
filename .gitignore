@@ -51,3 +51,6 @@ appsettings.local.yaml
 .DS_Store
 Thumbs.db
 desktop.ini
+
+# lock не коммитим: разные мажоры npm генерируют несовместимые lock-файлы
+web/package-lock.json
