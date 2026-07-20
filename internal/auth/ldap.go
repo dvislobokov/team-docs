@@ -196,7 +196,7 @@ func (l *LDAPAuthenticator) Authenticate(login, password string) (*User, error) 
 	var entry *ldap.Entry
 	if bindName := l.resolveBindName(); bindName != "" {
 		// search-then-bind.
-		if err := conn.Bind(bindName, l.cfg.BindPassword); err != nil {
+		if err := conn.Bind(bindName, config.SecretString(l.cfg.BindPassword)); err != nil {
 			return nil, fmt.Errorf("ldap: bind сервисной учётки: %w", err)
 		}
 		entry, err = l.searchUser(conn, login, attrs)
@@ -207,7 +207,7 @@ func (l *LDAPAuthenticator) Authenticate(login, password string) (*User, error) 
 			return nil, ErrLDAPAuth
 		}
 		// Возвращаемся под сервисную учётку — для поиска групп.
-		if err := conn.Bind(bindName, l.cfg.BindPassword); err != nil {
+		if err := conn.Bind(bindName, config.SecretString(l.cfg.BindPassword)); err != nil {
 			return nil, fmt.Errorf("ldap: повторный bind: %w", err)
 		}
 	} else {
@@ -429,7 +429,7 @@ func (l *LDAPAuthenticator) Check() map[string]any {
 	out["connect"] = "ok"
 
 	if bindName := l.resolveBindName(); bindName != "" {
-		if err := conn.Bind(bindName, l.cfg.BindPassword); err != nil {
+		if err := conn.Bind(bindName, config.SecretString(l.cfg.BindPassword)); err != nil {
 			out["serviceBind"] = "ошибка: " + err.Error()
 		} else {
 			out["serviceBind"] = "ok"

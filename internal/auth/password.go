@@ -31,7 +31,7 @@ func NewPasswordHandler(a *Authenticator, reg *Registry, l *LDAPAuthenticator,
 
 // Enabled — показывать ли форму логин/пароль на экране входа.
 func (h *PasswordHandler) Enabled() bool {
-	return h.ldap != nil || (h.local.Username != "" && h.local.PasswordHash != "")
+	return h.ldap != nil || (h.local.Username != "" && config.SecretString(h.local.PasswordHash) != "")
 }
 
 func (h *PasswordHandler) Register(e *echo.Echo) {
@@ -54,8 +54,9 @@ func (h *PasswordHandler) login(c echo.Context) error {
 	// 1) Локальный админ: если логин совпал — только локальная проверка
 	// (никогда не уходим в LDAP с его паролем).
 	if h.local.Username != "" && strings.EqualFold(req.Login, h.local.Username) {
-		if h.local.PasswordHash == "" ||
-			bcrypt.CompareHashAndPassword([]byte(h.local.PasswordHash), []byte(req.Password)) != nil {
+		hash := config.SecretString(h.local.PasswordHash)
+		if hash == "" ||
+			bcrypt.CompareHashAndPassword([]byte(hash), []byte(req.Password)) != nil {
 			return unauthorized
 		}
 		u := &User{Subject: "local:" + strings.ToLower(h.local.Username),

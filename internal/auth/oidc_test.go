@@ -90,12 +90,12 @@ func TestOIDCKeycloakFlowWithEditorGroups(t *testing.T) {
 	run := func(roles []string) (*echo.Echo, *http.Cookie) {
 		idp := fakeKeycloak(t, roles)
 		cfg := config.AuthSettings{
-			Enabled: true, HMACSecret: "x", PublicRead: true, Header: "Authorization",
-			SessionSecret: "kc-secret", SessionTTLHours: 1, DefaultRole: "editor",
+			Enabled: true, HMACSecret: config.PlainSecret("x"), PublicRead: true, Header: "Authorization",
+			SessionSecret: config.PlainSecret("kc-secret"), SessionTTLHours: 1, DefaultRole: "editor",
 			EditorGroups: []string{"docs-editors"},
 			Providers: config.ProvidersSettings{OIDC: config.OIDCClientSettings{
 				Label: "Keycloak", Issuer: idp.URL + "/realms/td",
-				ClientID: "td", ClientSecret: "cs",
+				ClientID: "td", ClientSecret: config.PlainSecret("cs"),
 			}},
 		}
 		a, err := New(cfg)

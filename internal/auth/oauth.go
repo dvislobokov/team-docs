@@ -271,7 +271,7 @@ func oidcProvider(c config.OIDCClientSettings) *Provider {
 	p := &Provider{
 		Key: "oidc", Label: label,
 		Scopes:   []string{"openid", "profile", "email"},
-		ClientID: c.ClientID, clientSecret: staticSecret(c.ClientSecret),
+		ClientID: c.ClientID, clientSecret: staticSecret(config.SecretString(c.ClientSecret)),
 	}
 	p.discover = func(client *http.Client) error {
 		doc, err := fetchJSON(client,
@@ -369,7 +369,7 @@ func googleProvider(c config.OAuthClientSettings) *Provider {
 		AuthURL:  "https://accounts.google.com/o/oauth2/v2/auth",
 		TokenURL: "https://oauth2.googleapis.com/token",
 		Scopes:   []string{"openid", "email", "profile"},
-		ClientID: c.ClientID, clientSecret: staticSecret(c.ClientSecret),
+		ClientID: c.ClientID, clientSecret: staticSecret(config.SecretString(c.ClientSecret)),
 		profile: func(client *http.Client, tok map[string]any) (*User, error) {
 			info, err := fetchJSON(client,
 				"https://openidconnect.googleapis.com/v1/userinfo",
@@ -392,7 +392,7 @@ func yandexProvider(c config.OAuthClientSettings) *Provider {
 		Key: "yandex", Label: "Яндекс",
 		AuthURL:  "https://oauth.yandex.ru/authorize",
 		TokenURL: "https://oauth.yandex.ru/token",
-		ClientID: c.ClientID, clientSecret: staticSecret(c.ClientSecret),
+		ClientID: c.ClientID, clientSecret: staticSecret(config.SecretString(c.ClientSecret)),
 		profile: func(client *http.Client, tok map[string]any) (*User, error) {
 			info, err := fetchJSON(client,
 				"https://login.yandex.ru/info?format=json",
@@ -420,7 +420,7 @@ func vkProvider(c config.OAuthClientSettings) *Provider {
 		AuthURL:  "https://oauth.vk.com/authorize",
 		TokenURL: "https://oauth.vk.com/access_token",
 		Scopes:   []string{"email"},
-		ClientID: c.ClientID, clientSecret: staticSecret(c.ClientSecret),
+		ClientID: c.ClientID, clientSecret: staticSecret(config.SecretString(c.ClientSecret)),
 		profile: func(client *http.Client, tok map[string]any) (*User, error) {
 			// VK кладёт user_id и email прямо в token-ответ.
 			uid := fmt.Sprintf("%v", tok["user_id"])

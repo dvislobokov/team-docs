@@ -4,7 +4,32 @@ import (
 	"os"
 
 	"github.com/dvislobokov/sconf"
+	"github.com/dvislobokov/sconf/secret"
 )
+
+// Секретные поля конфигурации (пароли, ключи, client_secret) имеют тип
+// *secret.Value из sconf: значение задаётся либо напрямую с префиксом
+// "plain:" ("plain:мой-секрет"), либо путём в Vault
+// ("secret/data/teamdocs?field=hmac") — тогда sconf сам достаёт и фоново
+// обновляет его (нужны VAULT_ADDR и т.п.). Дефолт "plain:" означает
+// «секрет не задан» и не требует Vault.
+
+// PlainSecret строит секрет с явным значением — для тестов и кода,
+// собирающего конфигурацию вручную.
+func PlainSecret(v string) *secret.Value {
+	s := &secret.Value{}
+	_ = s.UnmarshalConfig(secret.PlainPrefix + v)
+	return s
+}
+
+// SecretString возвращает текущее значение секрета; nil-безопасно
+// (nil и незаданный секрет → пустая строка).
+func SecretString(v *secret.Value) string {
+	if v == nil {
+		return ""
+	}
+	return v.Get()
+}
 
 // Settings описывает конфигурацию приложения.
 // Значения берутся из appsettings.yaml (опционально) и переменных окружения
@@ -73,7 +98,7 @@ type AuthSettings struct {
 	// JWKSURL — endpoint JWKS IdP для проверки RS256-подписи (Keycloak certs).
 	JWKSURL string `yaml:"jwksUrl" default:""`
 	// HMACSecret — альтернатива JWKS: общий секрет для HS256-токенов прокси.
-	HMACSecret string `yaml:"hmacSecret" default:""`
+	HMACSecret *secret.Value `yaml:"hmacSecret" default:"plain:"`
 	// Issuer/Audience — необязательная доп. проверка claims iss/aud.
 	Issuer   string `yaml:"issuer" default:""`
 	Audience string `yaml:"audience" default:""`
@@ -101,7 +126,7 @@ type AuthSettings struct {
 	PublicURL string `yaml:"publicUrl" default:""`
 	// SessionSecret подписывает cookie-сессии (HS256). Пусто → случайный на
 	// старте: сессии слетают при рестарте — в проде задать явно.
-	SessionSecret string `yaml:"sessionSecret" default:""`
+	SessionSecret *secret.Value `yaml:"sessionSecret" default:"plain:"`
 	// SessionTTLHours — время жизни сессии (по умолчанию 30 дней).
 	SessionTTLHours int `yaml:"sessionTtlHours" default:"720"`
 	// DefaultRole — роль новых пользователей: reader | editor.
@@ -123,7 +148,7 @@ type AuthSettings struct {
 type LocalAdminSettings struct {
 	Username string `yaml:"username" default:""`
 	// PasswordHash — bcrypt ($2a$…). Сгенерировать: htpasswd -nbB x 'пароль'.
-	PasswordHash string `yaml:"passwordHash" default:""`
+	PasswordHash *secret.Value `yaml:"passwordHash" default:"plain:"`
 }
 
 // LDAPSettings — search-then-bind (сервисная учётка → поиск → bind DN
@@ -146,9 +171,9 @@ type LDAPSettings struct {
 
 	// Сервисная учётка. BindLogin: `=` → DN как есть; иначе bindLoginTemplate
 	// (%s), иначе автоправило пресета. Пусто → direct-bind по userLoginTemplate.
-	BindLogin         string `yaml:"bindLogin" default:""`
-	BindLoginTemplate string `yaml:"bindLoginTemplate" default:""`
-	BindPassword      string `yaml:"bindPassword" default:""`
+	BindLogin         string        `yaml:"bindLogin" default:""`
+	BindLoginTemplate string        `yaml:"bindLoginTemplate" default:""`
+	BindPassword      *secret.Value `yaml:"bindPassword" default:"plain:"`
 	// ServiceDNTemplate — правило пресета openldap для bindLogin.
 	ServiceDNTemplate string `yaml:"serviceDnTemplate" default:""`
 
@@ -195,9 +220,9 @@ type OIDCClientSettings struct {
 	Label string `yaml:"label" default:"SSO"`
 	// Issuer — базовый URL realm'а, например
 	// https://keycloak.corp.local/realms/teamdocs
-	Issuer       string `yaml:"issuer" default:""`
-	ClientID     string `yaml:"clientId" default:""`
-	ClientSecret string `yaml:"clientSecret" default:""`
+	Issuer       string        `yaml:"issuer" default:""`
+	ClientID     string        `yaml:"clientId" default:""`
+	ClientSecret *secret.Value `yaml:"clientSecret" default:"plain:"`
 	// GroupsClaim — claim userinfo с группами; дополнительно всегда
 	// читается Keycloak-стиль realm_access.roles. Группы попадают в сессию
 	// и работают с editorGroups.
@@ -205,8 +230,8 @@ type OIDCClientSettings struct {
 }
 
 type OAuthClientSettings struct {
-	ClientID     string `yaml:"clientId" default:""`
-	ClientSecret string `yaml:"clientSecret" default:""`
+	ClientID     string        `yaml:"clientId" default:""`
+	ClientSecret *secret.Value `yaml:"clientSecret" default:"plain:"`
 }
 
 // AppleClientSettings — Sign in with Apple: client_secret не статический,
@@ -215,8 +240,9 @@ type AppleClientSettings struct {
 	ClientID string `yaml:"clientId" default:""` // Services ID
 	TeamID   string `yaml:"teamId" default:""`
 	KeyID    string `yaml:"keyId" default:""`
-	// PrivateKey — содержимое .p8 (PEM, PKCS#8), можно через env с \n.
-	PrivateKey string `yaml:"privateKey" default:""`
+	// PrivateKey — содержимое .p8 (PEM, PKCS#8): "plain:"+PEM (через env — с \n)
+	// либо путь в Vault (KV с полем ключа).
+	PrivateKey *secret.Value `yaml:"privateKey" default:"plain:"`
 }
 
 // Load читает конфигурацию из файла (опционально) и переменных окружения.

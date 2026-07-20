@@ -9,6 +9,8 @@ import (
 
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/labstack/echo/v4"
+
+	"team-docs/internal/config"
 )
 
 // sessionCookie — имя cookie со встроенной сессией (подписанный HS256 JWT).
@@ -17,8 +19,8 @@ const sessionCookie = "td_session"
 // sessionSecret возвращает секрет подписи сессий; если не задан в конфиге —
 // генерирует случайный (сессии не переживут рестарт — для прода задать явно).
 func (a *Authenticator) sessionSecret() []byte {
-	if a.cfg.SessionSecret != "" {
-		return []byte(a.cfg.SessionSecret)
+	if s := config.SecretString(a.cfg.SessionSecret); s != "" {
+		return []byte(s)
 	}
 	a.randOnce.Do(func() {
 		b := make([]byte, 32)

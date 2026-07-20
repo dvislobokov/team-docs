@@ -11,6 +11,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/labstack/echo/v4"
 
+	"team-docs/internal/config"
 	"team-docs/internal/store"
 )
 
@@ -101,14 +102,14 @@ func (h *AdminHandler) authSettings(c echo.Context) error {
 	jwt := section{Title: "JWT от IAM-прокси", Items: []item{
 		{"Заголовок с токеном", cfg.Header},
 		{"JWKS URL (RS256)", orDash(cfg.JWKSURL)},
-		{"HMAC-секрет (HS256)", secret(cfg.HMACSecret)},
+		{"HMAC-секрет (HS256)", secret(config.SecretString(cfg.HMACSecret))},
 		{"Issuer", orDash(cfg.Issuer)},
 		{"Audience", orDash(cfg.Audience)},
 		{"Claim логина / имени / email", cfg.UsernameClaim + " / " + cfg.NameClaim + " / " + cfg.EmailClaim},
 	}}
 
 	sessionSecret := "случайный (сессии слетают при рестарте)"
-	if cfg.SessionSecret != "" {
+	if config.SecretString(cfg.SessionSecret) != "" {
 		sessionSecret = "задан"
 	}
 	sessions := section{Title: "Сессии встроенного входа", Items: []item{
@@ -155,7 +156,7 @@ func (h *AdminHandler) authSettings(c echo.Context) error {
 			{"Ветки поиска пользователей", list(l.UserBases)},
 			{"Режим", mode},
 			{"Сервисная учётка", orDash(l.BindLogin)},
-			{"Пароль сервисной учётки", secret(l.BindPassword)},
+			{"Пароль сервисной учётки", secret(config.SecretString(l.BindPassword))},
 			{"Шаблон direct-bind", orDash(l.UserLoginTemplate)},
 			{"Фильтр пользователя", orDash(l.UserFilter)},
 			{"Атрибуты логин / имя / email", orDash(l.LoginAttr) + " / " + orDash(l.NameAttr) + " / " + orDash(l.EmailAttr)},
@@ -168,7 +169,7 @@ func (h *AdminHandler) authSettings(c echo.Context) error {
 
 	localAdmin := section{Title: "Локальный администратор (break-glass)", Items: []item{
 		{"Логин", orDash(cfg.LocalAdmin.Username)},
-		{"Хеш пароля", secret(cfg.LocalAdmin.PasswordHash)},
+		{"Хеш пароля", secret(config.SecretString(cfg.LocalAdmin.PasswordHash))},
 	}}
 
 	return c.JSON(http.StatusOK, []section{general, jwt, sessions, providers, ldap, localAdmin})

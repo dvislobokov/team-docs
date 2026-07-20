@@ -17,7 +17,7 @@ import (
 // ES256-JWT, подписанный приватным ключом .p8 (iss=teamId, sub=clientId).
 // Apple допускает срок до 6 месяцев; генерируем короткоживущий на каждый обмен.
 func appleClientSecret(c config.AppleClientSettings) (string, error) {
-	keyPEM := strings.ReplaceAll(c.PrivateKey, `\n`, "\n") // ключ мог прийти через env одной строкой
+	keyPEM := strings.ReplaceAll(config.SecretString(c.PrivateKey), `\n`, "\n") // ключ мог прийти через env одной строкой
 	block, _ := pem.Decode([]byte(keyPEM))
 	if block == nil {
 		return "", fmt.Errorf("apple: privateKey не похож на PEM (.p8)")

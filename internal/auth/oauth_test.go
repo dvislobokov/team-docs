@@ -139,8 +139,8 @@ func runFlow(t *testing.T, e *echo.Echo) *http.Cookie {
 
 func TestOAuthFlowAndRoles(t *testing.T) {
 	cfg := config.AuthSettings{
-		Enabled: true, HMACSecret: "x", PublicRead: true, Header: "Authorization",
-		SessionSecret: "session-secret", SessionTTLHours: 1, DefaultRole: "editor",
+		Enabled: true, HMACSecret: config.PlainSecret("x"), PublicRead: true, Header: "Authorization",
+		SessionSecret: config.PlainSecret("session-secret"), SessionTTLHours: 1, DefaultRole: "editor",
 	}
 	e, _ := oauthApp(t, cfg, "fake:flow", "flow@test.io")
 	session := runFlow(t, e)
@@ -191,8 +191,8 @@ func TestOAuthFlowAndRoles(t *testing.T) {
 
 func TestOAuthAdminBootstrap(t *testing.T) {
 	cfg := config.AuthSettings{
-		Enabled: true, HMACSecret: "x", PublicRead: true, Header: "Authorization",
-		SessionSecret: "session-secret-2", SessionTTLHours: 1, DefaultRole: "editor",
+		Enabled: true, HMACSecret: config.PlainSecret("x"), PublicRead: true, Header: "Authorization",
+		SessionSecret: config.PlainSecret("session-secret-2"), SessionTTLHours: 1, DefaultRole: "editor",
 		AdminEmails: []string{"boss@test.io"},
 	}
 	e, _ := oauthApp(t, cfg, "fake:boss", "boss@test.io")

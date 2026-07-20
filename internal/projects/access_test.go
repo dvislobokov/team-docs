@@ -68,7 +68,7 @@ func TestAccessMatrix(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM groups WHERE name LIKE 'am-%'`)
 	})
 
-	a, err := auth.New(config.AuthSettings{Enabled: true, HMACSecret: "x", PublicRead: true})
+	a, err := auth.New(config.AuthSettings{Enabled: true, HMACSecret: config.PlainSecret("x"), PublicRead: true})
 	if err != nil {
 		t.Fatal(err)
 	}

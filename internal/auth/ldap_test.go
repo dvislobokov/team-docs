@@ -79,9 +79,9 @@ func TestLocalAdminBreakGlass(t *testing.T) {
 		t.Fatal(err)
 	}
 	cfg := config.AuthSettings{
-		Enabled: true, HMACSecret: "x", PublicRead: true, Header: "Authorization",
-		SessionSecret: "la-secret", SessionTTLHours: 1, DefaultRole: "editor",
-		LocalAdmin: config.LocalAdminSettings{Username: "root", PasswordHash: string(hash)},
+		Enabled: true, HMACSecret: config.PlainSecret("x"), PublicRead: true, Header: "Authorization",
+		SessionSecret: config.PlainSecret("la-secret"), SessionTTLHours: 1, DefaultRole: "editor",
+		LocalAdmin: config.LocalAdminSettings{Username: "root", PasswordHash: config.PlainSecret(string(hash))},
 	}
 	a, err := New(cfg)
 	if err != nil {
@@ -198,7 +198,7 @@ func TestOpenLDAPIntegration(t *testing.T) {
 
 	l, err := NewLDAP(config.LDAPSettings{
 		URL: url, Preset: "openldap", BaseDN: ldapTestBase,
-		BindLogin: ldapTestAdmin, BindPassword: ldapTestPass,
+		BindLogin: ldapTestAdmin, BindPassword: config.PlainSecret(ldapTestPass),
 		EmailAttr:   "mail",
 		AdminGroups: []string{"docs-admins"},
 	})
@@ -270,10 +270,10 @@ func TestLDAPNestedAndMirroring(t *testing.T) {
 		_, _ = pool.Exec(ctx, `DELETE FROM groups WHERE source = 'ldap'`)
 	})
 
-	cfg := config.AuthSettings{Enabled: true, HMACSecret: "x", DefaultRole: "reader"}
+	cfg := config.AuthSettings{Enabled: true, HMACSecret: config.PlainSecret("x"), DefaultRole: "reader"}
 	cfg.LDAP = config.LDAPSettings{
 		URL: url, Preset: "openldap", BaseDN: ldapTestBase,
-		BindLogin: ldapTestAdmin, BindPassword: ldapTestPass, EmailAttr: "mail",
+		BindLogin: ldapTestAdmin, BindPassword: config.PlainSecret(ldapTestPass), EmailAttr: "mail",
 		NestedGroups: true, SyncGroups: true,
 	}
 	l, err := NewLDAP(cfg.LDAP)

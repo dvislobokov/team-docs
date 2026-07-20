@@ -45,7 +45,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24 # тот же major, что и локально: lock из npm 11 не читается npm 10
           cache: npm
           cache-dependency-path: web/package-lock.json
 

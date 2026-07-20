@@ -24,7 +24,7 @@ type Authenticator struct {
 func New(cfg config.AuthSettings) (*Authenticator, error) {
 	a := &Authenticator{cfg: cfg}
 	if cfg.Enabled {
-		if cfg.JWKSURL == "" && cfg.HMACSecret == "" {
+		if cfg.JWKSURL == "" && config.SecretString(cfg.HMACSecret) == "" {
 			return nil, errors.New("auth enabled, but neither auth.jwksUrl nor auth.hmacSecret is set")
 		}
 		if cfg.JWKSURL != "" {
@@ -76,10 +76,11 @@ func (a *Authenticator) IsAdmin(u *User) bool {
 // keyfunc выбирает ключ по алгоритму токена (HMAC-секрет или RSA-ключ из JWKS).
 func (a *Authenticator) keyfunc(t *jwt.Token) (any, error) {
 	if _, ok := t.Method.(*jwt.SigningMethodHMAC); ok {
-		if a.cfg.HMACSecret == "" {
+		hmac := config.SecretString(a.cfg.HMACSecret)
+		if hmac == "" {
 			return nil, errors.New("HMAC-signed token, but auth.hmacSecret is not configured")
 		}
-		return []byte(a.cfg.HMACSecret), nil
+		return []byte(hmac), nil
 	}
 	if a.jwks != nil {
 		return a.jwks.keyfunc(t)

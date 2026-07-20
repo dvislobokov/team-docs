@@ -78,7 +78,7 @@ func TestOpenModeUsesDevUser(t *testing.T) {
 }
 
 func TestPublicReadAnonymous(t *testing.T) {
-	cfg := config.AuthSettings{Enabled: true, HMACSecret: secret, PublicRead: true, Header: "Authorization"}
+	cfg := config.AuthSettings{Enabled: true, HMACSecret: config.PlainSecret(secret), PublicRead: true, Header: "Authorization"}
 	e, _ := newApp(t, cfg)
 
 	// Аноним читает, но не пишет.
@@ -91,7 +91,7 @@ func TestPublicReadAnonymous(t *testing.T) {
 }
 
 func TestClosedReadWithoutToken(t *testing.T) {
-	cfg := config.AuthSettings{Enabled: true, HMACSecret: secret, PublicRead: false, Header: "Authorization"}
+	cfg := config.AuthSettings{Enabled: true, HMACSecret: config.PlainSecret(secret), PublicRead: false, Header: "Authorization"}
 	e, _ := newApp(t, cfg)
 	if rec := do(e, http.MethodGet, "/api/probe", ""); rec.Code != http.StatusUnauthorized {
 		t.Fatalf("чтение без токена при закрытом режиме: code=%d, ожидался 401", rec.Code)
@@ -100,7 +100,7 @@ func TestClosedReadWithoutToken(t *testing.T) {
 
 func TestValidAndInvalidToken(t *testing.T) {
 	cfg := config.AuthSettings{
-		Enabled: true, HMACSecret: secret, Header: "Authorization",
+		Enabled: true, HMACSecret: config.PlainSecret(secret), Header: "Authorization",
 		NameClaim: "name", UsernameClaim: "preferred_username", EmailClaim: "email",
 	}
 	e, _ := newApp(t, cfg)
@@ -130,7 +130,7 @@ func TestValidAndInvalidToken(t *testing.T) {
 
 func TestEditorGroups(t *testing.T) {
 	cfg := config.AuthSettings{
-		Enabled: true, HMACSecret: secret, Header: "Authorization",
+		Enabled: true, HMACSecret: config.PlainSecret(secret), Header: "Authorization",
 		EditorGroups: []string{"docs-editors"},
 	}
 	e, _ := newApp(t, cfg)
