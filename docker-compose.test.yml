@@ -35,6 +35,18 @@ services:
       timeout: 3s
       retries: 30
 
+  # --- LDAP (интеграционные тесты авторизации, §8) ---
+  # Структуру тесты сидируют сами через admin-bind (cn=admin,dc=corp,dc=local).
+  ldap:
+    profiles: [ldap]
+    image: osixia/openldap:1.5.0
+    environment:
+      LDAP_ORGANISATION: "Team Docs"
+      LDAP_DOMAIN: "corp.local"
+      LDAP_ADMIN_PASSWORD: "adminpass"
+    ports:
+      - "${LDAP_TEST_PORT:-38900}:389"
+
   # --- почта (уведомления/дайджесты, этап 4) ---
   mailpit:
     profiles: [mail]

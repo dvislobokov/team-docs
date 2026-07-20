@@ -63,25 +63,90 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// Экран входа: кнопки настроенных OAuth-провайдеров (GET /auth/providers);
-// если их нет — приложение стоит за IAM-прокси, показываем подсказку.
+// Экран входа: форма логин/пароль (LDAP/локальный админ) и кнопки
+// OAuth-провайдеров (GET /auth/providers). Если ничего не настроено —
+// приложение стоит за IAM-прокси, показываем подсказку.
 function LoginScreen() {
-  const [providers, setProviders] = useState<OAuthProvider[] | null>(null);
+  const [methods, setMethods] = useState<{ providers: OAuthProvider[]; password: boolean } | null>(null);
+  const [login, setLogin] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     fetch("/auth/providers")
-      .then((r) => (r.ok ? r.json() : []))
-      .then(setProviders)
-      .catch(() => setProviders([]));
+      .then((r) => (r.ok ? r.json() : { providers: [], password: false }))
+      .then(setMethods)
+      .catch(() => setMethods({ providers: [], password: false }));
   }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError("");
+    setBusy(true);
+    try {
+      const res = await fetch("/auth/password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ login, password }),
+      });
+      if (res.ok) {
+        window.location.href = "/";
+        return;
+      }
+      setError(res.status === 401 ? "Неверный логин или пароль" : "Каталог недоступен — попробуйте позже");
+    } catch {
+      setError("Не удалось выполнить вход");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const empty = methods && methods.providers.length === 0 && !methods.password;
 
   return (
     <FullScreen>
       <div className="text-[46px]">🔒</div>
       <h1 className="mt-4 font-display text-[26px] font-500 text-ink">Вход в team-docs</h1>
-      {providers && providers.length > 0 ? (
-        <div className="mt-6 flex w-full max-w-[280px] flex-col gap-2">
-          {providers.map((p) => (
+
+      {methods === null && <p className="mt-2 text-[14px] text-muted">Загрузка…</p>}
+
+      {methods?.password && (
+        <form onSubmit={submit} className="mt-6 flex w-full max-w-[280px] flex-col gap-2">
+          <input
+            value={login}
+            onChange={(e) => setLogin(e.target.value)}
+            placeholder="Логин"
+            autoComplete="username"
+            className="rounded-lg border border-line bg-card px-4 py-2.5 text-[14px] text-ink outline-none focus:border-accent"
+          />
+          <input
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="Пароль"
+            autoComplete="current-password"
+            className="rounded-lg border border-line bg-card px-4 py-2.5 text-[14px] text-ink outline-none focus:border-accent"
+          />
+          {error && <p className="text-[13px] text-red-500">{error}</p>}
+          <button
+            type="submit"
+            disabled={busy || !login || !password}
+            className="rounded-lg bg-accent px-4 py-2.5 text-[14px] font-500 text-white transition hover:bg-accent/90 disabled:opacity-50"
+          >
+            {busy ? "Вход…" : "Войти"}
+          </button>
+        </form>
+      )}
+
+      {methods && methods.providers.length > 0 && (
+        <div className="mt-4 flex w-full max-w-[280px] flex-col gap-2">
+          {methods.password && (
+            <div className="my-1 flex items-center gap-3 text-[12px] text-faint">
+              <span className="h-px flex-1 bg-line" /> или <span className="h-px flex-1 bg-line" />
+            </div>
+          )}
+          {methods.providers.map((p) => (
             <a
               key={p.key}
               href={`/auth/login/${p.key}`}
@@ -91,11 +156,12 @@ function LoginScreen() {
             </a>
           ))}
         </div>
-      ) : (
+      )}
+
+      {empty && (
         <p className="mt-2 max-w-sm text-[14px] leading-relaxed text-muted">
-          {providers === null
-            ? "Загрузка…"
-            : "Доступ к team-docs выдаёт корпоративный вход. Откройте приложение через него — или обратитесь к администратору."}
+          Доступ к team-docs выдаёт корпоративный вход. Откройте приложение
+          через него — или обратитесь к администратору.
         </p>
       )}
     </FullScreen>

@@ -75,7 +75,12 @@ type OAuthHandler struct {
 	providers map[string]*Provider
 	order     []string
 	client    *http.Client
+	// passwordEnabled — показывать ли форму логин/пароль (LDAP/локальный админ).
+	passwordEnabled func() bool
 }
+
+// SetPasswordEnabled подключает индикатор формы логин/пароль к /auth/providers.
+func (h *OAuthHandler) SetPasswordEnabled(fn func() bool) { h.passwordEnabled = fn }
 
 func NewOAuthHandler(a *Authenticator, reg *Registry, log *srog.Logger, publicURL string, providers []*Provider) *OAuthHandler {
 	h := &OAuthHandler{
@@ -104,11 +109,12 @@ func (h *OAuthHandler) listProviders(c echo.Context) error {
 		Key   string `json:"key"`
 		Label string `json:"label"`
 	}
-	out := make([]item, 0, len(h.order))
+	providers := make([]item, 0, len(h.order))
 	for _, k := range h.order {
-		out = append(out, item{Key: k, Label: h.providers[k].Label})
+		providers = append(providers, item{Key: k, Label: h.providers[k].Label})
 	}
-	return c.JSON(http.StatusOK, out)
+	password := h.passwordEnabled != nil && h.passwordEnabled()
+	return c.JSON(http.StatusOK, echo.Map{"providers": providers, "password": password})
 }
 
 func (h *OAuthHandler) redirectURI(p *Provider) string {

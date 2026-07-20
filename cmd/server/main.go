@@ -65,10 +65,22 @@ func main() {
 
 	// Встроенный OAuth-логин (/auth/*): вне /api и auth-middleware.
 	providers := auth.BuildProviders(cfg.Auth)
-	auth.NewOAuthHandler(authenticator, registry, log, cfg.Auth.PublicURL, providers).
-		Register(srv.Echo())
+	oauthHandler := auth.NewOAuthHandler(authenticator, registry, log, cfg.Auth.PublicURL, providers)
+	oauthHandler.Register(srv.Echo())
 	if len(providers) > 0 {
 		log.Information("auth: builtin OAuth providers enabled: {Count}", len(providers))
+	}
+
+	// Вход по логину/паролю: LDAP (§8) + break-glass локальный админ.
+	ldapAuth, err := auth.NewLDAP(cfg.Auth.LDAP)
+	if err != nil {
+		log.Fatal(err, "failed to init ldap")
+	}
+	pwHandler := auth.NewPasswordHandler(authenticator, registry, ldapAuth, cfg.Auth.LocalAdmin, log)
+	pwHandler.Register(srv.Echo())
+	oauthHandler.SetPasswordEnabled(pwHandler.Enabled)
+	if ldapAuth != nil {
+		log.Information("auth: LDAP enabled ({Preset})", cfg.Auth.LDAP.Preset)
 	}
 
 	// Все /api-роуты (кроме /api/health) за middleware авторизации.

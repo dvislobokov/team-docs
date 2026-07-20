@@ -56,6 +56,39 @@ func (r *Registry) isBootstrapAdmin(u *User) bool {
 	return r.admins[strings.ToLower(u.Email)] || r.admins[strings.ToLower(u.Subject)]
 }
 
+// EnsureRole — EnsureUser + принудительная роль (локальный админ,
+// ldap.adminGroups). Понижение не делает: только повышает до want.
+func (r *Registry) EnsureRole(ctx context.Context, u *User, want string) error {
+	id, role, err := r.EnsureUser(ctx, u)
+	if err != nil {
+		return err
+	}
+	if role == want || (want == RoleAdmin && role == RoleAdmin) || roleRank(role) >= roleRank(want) {
+		u.ID, u.Role = id, role
+		return nil
+	}
+	if err := r.q.SetUserRole(ctx, store.SetUserRoleParams{ID: id, Role: want}); err != nil {
+		return err
+	}
+	r.mu.Lock()
+	r.m[u.Subject] = registryEntry{id: id, role: want, expires: time.Now().Add(registryTTL)}
+	r.mu.Unlock()
+	u.ID, u.Role = id, want
+	return nil
+}
+
+func roleRank(r string) int {
+	switch r {
+	case RoleAdmin:
+		return 3
+	case RoleEditor:
+		return 2
+	case RoleReader:
+		return 1
+	}
+	return 0
+}
+
 // EnsureUser возвращает id и роль пользователя в БД, создавая/обновляя запись
 // при необходимости. Профиль обновляется не чаще registryTTL.
 func (r *Registry) EnsureUser(ctx context.Context, u *User) (int64, string, error) {

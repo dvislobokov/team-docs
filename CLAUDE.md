@@ -34,6 +34,8 @@ go test ./...                          # юнит; интеграционные 
 go test ./internal/pages/ -run TestMove  # один тест
 # интеграционные локально: поднять compose-постгрес и задать
 #   TEAMDOCS_TEST_DSN=postgres://teamdocs:teamdocs@localhost:54329/teamdocs_test?sslmode=disable
+# LDAP-тесты: docker compose -f docker-compose.test.yml --profile ldap up -d
+#   и TEAMDOCS_TEST_LDAP_URL=ldap://localhost:38900 (иначе скип)
 ```
 
 CI (`.github/workflows/ci.yml`): oxlint + tsc/vite build; gofmt (без vendor) + go vet + dev-сборка + go test (интеграционные на postgres-сервисе) + проверка актуальности sqlc; затем prod-бинарь.

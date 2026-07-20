@@ -118,6 +118,17 @@ auth:
   #     clientSecret: "..."
   #     # groupsClaim: groups  # + всегда читается realm_access.roles (Keycloak);
   #     #                        группы работают с editorGroups
+  # --- режим 3: LDAP (FreeIPA / OpenLDAP / Active Directory) ---
+  # ldap:
+  #   url: ldaps://dc.corp.local:636   # или ldap:// (+ startTls: true)
+  #   preset: ad                       # ad | freeipa | openldap
+  #   baseDn: dc=corp,dc=local
+  #   bindLogin: svc-teamdocs          # DN / UPN / короткий логин (см. bindLoginTemplate)
+  #   bindPassword: "..."
+  #   adminGroups: ["docs-admins"]     # DN или CN групп с ролью admin
+  # localAdmin:                        # break-glass: работает даже при упавшем LDAP
+  #   username: root
+  #   passwordHash: "$2y$..."          # bcrypt: htpasswd -nbB x 'пароль'
 ```
 
 Схема БД применяется автоматически при старте (миграции встроены в бинарь).

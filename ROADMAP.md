@@ -184,27 +184,27 @@
       явная привязка в профиле).
 - [ ] **LDAP-авторизация** (дизайн 2026-07-20) — третий режим рядом с
       IAM-JWT и OAuth, переиспользует cookie-сессии/Registry/роли:
-  - [ ] search-then-bind: сервисная учётка → поиск по subtree от baseDN
+  - [x] search-then-bind: сервисная учётка → поиск по subtree от baseDN
         (+ несколько userBases) → bind DN пользователя; ldaps/StartTLS,
         свой CA, таймауты;
-  - [ ] пресеты `ad | freeipa | openldap` (фильтры, логин-атрибут, группы:
+  - [x] пресеты `ad | freeipa | openldap` (фильтры, логин-атрибут, группы:
         AD memberOf + вложенные chain-matching 1.2.840.113556.1.4.1941;
         FreeIPA memberOf; OpenLDAP memberOf-overlay с fallback-поиском
         по member/uniqueMember/memberUid); всё переопределяемо;
-  - [ ] `bindLogin` вместо полного bindDN. Порядок резолва: `=` → DN как
+  - [x] `bindLogin` вместо полного bindDN. Порядок резолва: `=` → DN как
         есть; задан `bindLoginTemplate` (`%s`: 'CORP\%s', '%s@corp.local',
         'uid=%s,ou=svc,...') → подстановка и как есть; иначе автоправило
         пресета (AD — @domain из baseDN; FreeIPA — cn=users,cn=accounts;
         OpenLDAP — serviceDNTemplate). Аналогичный `userLoginTemplate` для
         direct-bind пользователей без сервисной учётки. Развороты и тестовый
         bind — в «Проверить авторизацию»;
-  - [ ] роли: `ldap.adminGroups` (список групп админов) → admin,
+  - [x] роли: `ldap.adminGroups` (список групп админов) → admin,
         editorGroups → editor, иначе defaultRole;
-  - [ ] **break-glass локальный админ**: `auth.localAdmin`
+  - [x] **break-glass локальный админ**: `auth.localAdmin`
         {username, bcrypt-hash} в конфиге/env (не в БД — переживает импорт,
         недоступен из UI), вход через ту же форму логин/пароль;
-  - [ ] форма логин/пароль на экране входа (совместно с OAuth-кнопками);
-  - [ ] тесты: OpenLDAP-контейнер в docker-compose.test.yml (профиль ldap)
+  - [x] форма логин/пароль на экране входа (совместно с OAuth-кнопками);
+  - [x] тесты: OpenLDAP-контейнер в docker-compose.test.yml (профиль ldap)
         с сидированной структурой; пресеты AD/FreeIPA — юнит на фильтры;
   - [ ] фаза 2: вложенные группы для FreeIPA/OpenLDAP (рекурсия с лимитом),
         зеркалирование LDAP-групп в локальные (роль проекта — AD-группе).

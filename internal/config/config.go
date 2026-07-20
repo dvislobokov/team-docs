@@ -111,6 +111,62 @@ type AuthSettings struct {
 	AdminEmails []string `yaml:"adminEmails"`
 
 	Providers ProvidersSettings `yaml:"providers"`
+
+	// LocalAdmin — break-glass учётка: живёт только в конфиге/env (переживает
+	// импорт БД, недоступна для порчи из UI). Вход — через форму логин/пароль.
+	LocalAdmin LocalAdminSettings `yaml:"localAdmin"`
+	// LDAP — вход по логину/паролю через каталог (FreeIPA/OpenLDAP/AD).
+	LDAP LDAPSettings `yaml:"ldap"`
+}
+
+// LocalAdminSettings — локальный администратор (break-glass).
+type LocalAdminSettings struct {
+	Username string `yaml:"username" default:""`
+	// PasswordHash — bcrypt ($2a$…). Сгенерировать: htpasswd -nbB x 'пароль'.
+	PasswordHash string `yaml:"passwordHash" default:""`
+}
+
+// LDAPSettings — search-then-bind (сервисная учётка → поиск → bind DN
+// пользователя) либо direct-bind по userLoginTemplate. Включён, если задан url.
+type LDAPSettings struct {
+	// URL: ldap://host:389 или ldaps://host:636.
+	URL string `yaml:"url" default:""`
+	// StartTLS — апгрейд ldap:// до TLS.
+	StartTLS bool `yaml:"startTls" default:"false"`
+	// CACert — PEM своего CA (можно через env с \n); InsecureSkipVerify — dev.
+	CACert             string `yaml:"caCert" default:""`
+	InsecureSkipVerify bool   `yaml:"insecureSkipVerify" default:"false"`
+	TimeoutSeconds     int    `yaml:"timeoutSeconds" default:"10"`
+
+	// Preset задаёт дефолты фильтров/атрибутов: ad | freeipa | openldap.
+	Preset string `yaml:"preset" default:"openldap"`
+	BaseDN string `yaml:"baseDn" default:""`
+	// UserBases — ветки поиска пользователей (по умолчанию — baseDn).
+	UserBases []string `yaml:"userBases"`
+
+	// Сервисная учётка. BindLogin: `=` → DN как есть; иначе bindLoginTemplate
+	// (%s), иначе автоправило пресета. Пусто → direct-bind по userLoginTemplate.
+	BindLogin         string `yaml:"bindLogin" default:""`
+	BindLoginTemplate string `yaml:"bindLoginTemplate" default:""`
+	BindPassword      string `yaml:"bindPassword" default:""`
+	// ServiceDNTemplate — правило пресета openldap для bindLogin.
+	ServiceDNTemplate string `yaml:"serviceDnTemplate" default:""`
+
+	// UserFilter (%s — логин) и атрибуты; пусто → дефолт пресета.
+	UserFilter string `yaml:"userFilter" default:""`
+	LoginAttr  string `yaml:"loginAttr" default:""`
+	NameAttr   string `yaml:"nameAttr" default:""`
+	EmailAttr  string `yaml:"emailAttr" default:"mail"`
+	// UserLoginTemplate — direct-bind без сервисной учётки ('CORP\%s',
+	// '%s@corp.local', 'uid=%s,ou=people,…').
+	UserLoginTemplate string `yaml:"userLoginTemplate" default:""`
+
+	// Группы: memberOf (AD/FreeIPA/overlay) + fallback-поиск по groupBase
+	// с groupFilter (%s — DN пользователя, %u — логин); пусто → пресет.
+	GroupBase   string `yaml:"groupBase" default:""`
+	GroupFilter string `yaml:"groupFilter" default:""`
+	// AdminGroups — DN или CN групп, дающих роль admin.
+	AdminGroups []string `yaml:"adminGroups"`
 }
 
 // ProvidersSettings — клиенты OAuth-провайдеров. Провайдер считается
