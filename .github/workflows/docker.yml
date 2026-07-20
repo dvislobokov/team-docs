@@ -1,8 +1,8 @@
 name: Docker
 
 # Публикация dev-образа в GitHub Container Registry: push в main → тег edge.
-# Версионные образы (1.2.3, 1.2, latest) публикует release.yml после
-# автоматической простановки тега. Авторизация — встроенный GITHUB_TOKEN.
+# Версионные образы (2026.07.21, latest) публикует release.yml — релиз
+# запускается вручную. Авторизация — встроенный GITHUB_TOKEN.
 on:
   push:
     branches: ["main"]
