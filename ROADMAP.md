@@ -186,10 +186,13 @@
         AD memberOf + вложенные chain-matching 1.2.840.113556.1.4.1941;
         FreeIPA memberOf; OpenLDAP memberOf-overlay с fallback-поиском
         по member/uniqueMember/memberUid); всё переопределяемо;
-  - [ ] `bindLogin` вместо полного bindDN: `=` → DN как есть, `@` → UPN (AD),
-        иначе по правилу пресета (AD — @domain из baseDN; FreeIPA —
-        uid=%s,cn=users,cn=accounts; OpenLDAP — serviceDNTemplate);
-        разворот и тестовый bind — в «Проверить авторизацию»;
+  - [ ] `bindLogin` вместо полного bindDN. Порядок резолва: `=` → DN как
+        есть; задан `bindLoginTemplate` (`%s`: 'CORP\%s', '%s@corp.local',
+        'uid=%s,ou=svc,...') → подстановка и как есть; иначе автоправило
+        пресета (AD — @domain из baseDN; FreeIPA — cn=users,cn=accounts;
+        OpenLDAP — serviceDNTemplate). Аналогичный `userLoginTemplate` для
+        direct-bind пользователей без сервисной учётки. Развороты и тестовый
+        bind — в «Проверить авторизацию»;
   - [ ] роли: `ldap.adminGroups` (список групп админов) → admin,
         editorGroups → editor, иначе defaultRole;
   - [ ] **break-glass локальный админ**: `auth.localAdmin`
