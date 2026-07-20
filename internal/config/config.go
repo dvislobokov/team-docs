@@ -114,12 +114,30 @@ type AuthSettings struct {
 }
 
 // ProvidersSettings — клиенты OAuth-провайдеров. Провайдер считается
-// настроенным, если задан clientId.
+// настроенным, если задан clientId (для oidc — ещё и issuer).
 type ProvidersSettings struct {
 	Google OAuthClientSettings `yaml:"google"`
 	Yandex OAuthClientSettings `yaml:"yandex"`
 	VK     OAuthClientSettings `yaml:"vk"`
 	Apple  AppleClientSettings `yaml:"apple"`
+	// OIDC — любой стандартный OpenID Connect IdP (Keycloak, Authentik,
+	// Dex, …): эндпоинты берутся из /.well-known/openid-configuration.
+	OIDC OIDCClientSettings `yaml:"oidc"`
+}
+
+// OIDCClientSettings — generic OIDC-провайдер (Keycloak и совместимые).
+type OIDCClientSettings struct {
+	// Label — подпись кнопки на экране входа.
+	Label string `yaml:"label" default:"SSO"`
+	// Issuer — базовый URL realm'а, например
+	// https://keycloak.corp.local/realms/teamdocs
+	Issuer       string `yaml:"issuer" default:""`
+	ClientID     string `yaml:"clientId" default:""`
+	ClientSecret string `yaml:"clientSecret" default:""`
+	// GroupsClaim — claim userinfo с группами; дополнительно всегда
+	// читается Keycloak-стиль realm_access.roles. Группы попадают в сессию
+	// и работают с editorGroups.
+	GroupsClaim string `yaml:"groupsClaim" default:"groups"`
 }
 
 type OAuthClientSettings struct {

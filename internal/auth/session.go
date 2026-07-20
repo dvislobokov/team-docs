@@ -46,6 +46,11 @@ func (a *Authenticator) IssueSession(c echo.Context, u *User) error {
 		"exp":   time.Now().Add(a.sessionTTL()).Unix(),
 		"iat":   time.Now().Unix(),
 	}
+	// Группы IdP (OIDC/Keycloak) — в сессию: editorGroups работает на каждом
+	// запросе, как в proxy-режиме.
+	if len(u.Groups) > 0 {
+		claims["grp"] = u.Groups
+	}
 	s, err := jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString(a.sessionSecret())
 	if err != nil {
 		return err
@@ -88,10 +93,18 @@ func (a *Authenticator) sessionUser(c echo.Context) (*User, error) {
 		return nil, errors.New("invalid session")
 	}
 	str := func(k string) string { v, _ := claims[k].(string); return v }
-	return &User{
+	u := &User{
 		Subject:  str("sub"),
 		Username: str("pu"),
 		Name:     str("name"),
 		Email:    str("email"),
-	}, nil
+	}
+	if g, ok := claims["grp"].([]any); ok {
+		for _, x := range g {
+			if s, ok := x.(string); ok {
+				u.Groups = append(u.Groups, s)
+			}
+		}
+	}
+	return u, nil
 }

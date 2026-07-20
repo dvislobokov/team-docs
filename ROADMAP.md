@@ -170,6 +170,11 @@
 - [x] Провайдеры: Google (OIDC userinfo), Yandex, VK (user_id/email из
       token-ответа), Apple (ES256 client_secret из .p8, form_post-callback).
       Настройка: `auth.providers.*` + `auth.publicUrl`.
+- [x] **Generic OIDC-провайдер** (`providers.oidc`, 2026-07-20): любой
+      стандартный IdP — Keycloak, Authentik, Dex; эндпоинты из
+      `.well-known/openid-configuration` (ленивое discovery с повтором),
+      профиль из userinfo, группы (groupsClaim + realm_access.roles) в
+      cookie-сессии → editorGroups работает как в proxy-режиме.
 - [x] Роли в БД: reader / editor / admin (`users.role`, 0008), дефолт
       `auth.defaultRole`; бутстрап админов `auth.adminEmails`; `RequireAdmin`;
       маппинг групп из JWT сохранён для IAM-режима (приоритетнее роли).

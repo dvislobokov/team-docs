@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/dvislobokov/srog"
@@ -41,6 +42,28 @@ type Provider struct {
 	extraAuthParams map[string]string
 	// postCallback — Apple шлёт callback POST-ом (response_mode=form_post).
 	postCallback bool
+	// discover — ленивое OIDC-discovery (generic-провайдер): заполняет
+	// AuthURL/TokenURL при первом обращении; при ошибке повторяется.
+	discover   func(client *http.Client) error
+	discoverMu sync.Mutex
+	discovered bool
+}
+
+// ready выполняет отложенное discovery провайдера (с повтором при ошибке).
+func (h *OAuthHandler) ready(p *Provider) error {
+	if p.discover == nil {
+		return nil
+	}
+	p.discoverMu.Lock()
+	defer p.discoverMu.Unlock()
+	if p.discovered {
+		return nil
+	}
+	if err := p.discover(h.client); err != nil {
+		return err
+	}
+	p.discovered = true
+	return nil
 }
 
 // OAuthHandler обслуживает /auth/*.
@@ -97,6 +120,10 @@ func (h *OAuthHandler) login(c echo.Context) error {
 	if !ok {
 		return echo.NewHTTPError(http.StatusNotFound, "unknown provider")
 	}
+	if err := h.ready(p); err != nil {
+		h.log.Error(err, "oauth: discovery failed for {Provider}", p.Key)
+		return echo.NewHTTPError(http.StatusBadGateway, "провайдер недоступен")
+	}
 	buf := make([]byte, 16)
 	_, _ = rand.Read(buf)
 	state := hex.EncodeToString(buf)
@@ -140,6 +167,10 @@ func (h *OAuthHandler) callback(c echo.Context) error {
 		return echo.NewHTTPError(http.StatusBadRequest, "missing authorization code")
 	}
 
+	if err := h.ready(p); err != nil {
+		h.log.Error(err, "oauth: discovery failed for {Provider}", p.Key)
+		return echo.NewHTTPError(http.StatusBadGateway, "провайдер недоступен")
+	}
 	tokenResp, err := h.exchange(p, code)
 	if err != nil {
 		h.log.Error(err, "oauth: code exchange failed for {Provider}", p.Key)
@@ -215,7 +246,81 @@ func BuildProviders(cfg config.AuthSettings) []*Provider {
 	if ap := cfg.Providers.Apple; ap.ClientID != "" {
 		out = append(out, appleProvider(ap))
 	}
+	if o := cfg.Providers.OIDC; o.ClientID != "" && o.Issuer != "" {
+		out = append(out, oidcProvider(o))
+	}
 	return out
+}
+
+// oidcProvider — generic OpenID Connect (Keycloak, Authentik, Dex, …):
+// эндпоинты берутся из discovery, профиль — из userinfo. Группы (claim
+// groupsClaim либо Keycloak realm_access.roles) кладутся в User.Groups и
+// далее в сессию — editorGroups работает как в proxy-режиме.
+func oidcProvider(c config.OIDCClientSettings) *Provider {
+	label := c.Label
+	if label == "" {
+		label = "SSO"
+	}
+	var userinfoURL string
+	p := &Provider{
+		Key: "oidc", Label: label,
+		Scopes:   []string{"openid", "profile", "email"},
+		ClientID: c.ClientID, clientSecret: staticSecret(c.ClientSecret),
+	}
+	p.discover = func(client *http.Client) error {
+		doc, err := fetchJSON(client,
+			strings.TrimRight(c.Issuer, "/")+"/.well-known/openid-configuration", "")
+		if err != nil {
+			return fmt.Errorf("oidc discovery: %w", err)
+		}
+		p.AuthURL = str(doc, "authorization_endpoint")
+		p.TokenURL = str(doc, "token_endpoint")
+		userinfoURL = str(doc, "userinfo_endpoint")
+		if p.AuthURL == "" || p.TokenURL == "" || userinfoURL == "" {
+			return fmt.Errorf("oidc discovery: неполный ответ %s", c.Issuer)
+		}
+		return nil
+	}
+	p.profile = func(client *http.Client, tok map[string]any) (*User, error) {
+		info, err := fetchJSON(client, userinfoURL, "Bearer "+str(tok, "access_token"))
+		if err != nil {
+			return nil, err
+		}
+		u := &User{
+			Subject:  "oidc:" + str(info, "sub"),
+			Username: str(info, "preferred_username"),
+			Name:     str(info, "name"),
+			Email:    str(info, "email"),
+		}
+		if u.Username == "" {
+			u.Username = u.Email
+		}
+		if u.Name == "" {
+			u.Name = u.Username
+		}
+		claim := c.GroupsClaim
+		if claim == "" {
+			claim = "groups"
+		}
+		if g, ok := info[claim].([]any); ok {
+			for _, x := range g {
+				if s, ok := x.(string); ok {
+					u.Groups = append(u.Groups, s)
+				}
+			}
+		}
+		if ra, ok := info["realm_access"].(map[string]any); ok { // Keycloak
+			if roles, ok := ra["roles"].([]any); ok {
+				for _, x := range roles {
+					if s, ok := x.(string); ok {
+						u.Groups = append(u.Groups, s)
+					}
+				}
+			}
+		}
+		return u, nil
+	}
+	return p
 }
 
 func staticSecret(s string) func() (string, error) {

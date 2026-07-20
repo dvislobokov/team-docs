@@ -111,6 +111,13 @@ auth:
   #   yandex: { clientId: "...", clientSecret: "..." }
   #   vk:     { clientId: "...", clientSecret: "..." }
   #   apple:  { clientId: "...", teamId: "...", keyId: "...", privateKey: "..." } # .p8
+  #   oidc:                                    # любой OIDC IdP: Keycloak, Authentik, Dex…
+  #     label: "Keycloak"
+  #     issuer: "https://keycloak.corp.local/realms/teamdocs"
+  #     clientId: "teamdocs"
+  #     clientSecret: "..."
+  #     # groupsClaim: groups  # + всегда читается realm_access.roles (Keycloak);
+  #     #                        группы работают с editorGroups
 ```
 
 Схема БД применяется автоматически при старте (миграции встроены в бинарь).
