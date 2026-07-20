@@ -92,30 +92,38 @@ branding:
 
 # Авторизация (по умолчанию выключена). Приложение за IAM-прокси, который
 # прокидывает JWT; здесь мы его валидируем.
+#
+# СЕКРЕТЫ (hmacSecret, sessionSecret, clientSecret, privateKey, bindPassword,
+# passwordHash) задаются одним из двух способов:
+#   - значение напрямую с префиксом "plain:"  → hmacSecret: "plain:мой-секрет"
+#   - путь в HashiCorp Vault                  → hmacSecret: "secret/data/teamdocs?field=hmac"
+# Во втором случае sconf сам достаёт секрет и фоново обновляет его; подключение
+# к Vault — через переменные среды (VAULT_ADDR, VAULT_TOKEN / approle и т.д.).
+# То же действует и для env: TEAMDOCS_AUTH__HMACSECRET="plain:мой-секрет".
 auth:
   enabled: false
   # --- режим 1: за IAM-прокси (валидация JWT из заголовка) ---
   # jwksUrl: "http://keycloak:8080/realms/teamdocs/protocol/openid-connect/certs"
   # issuer:  "http://keycloak:8080/realms/teamdocs"
-  # hmacSecret: ""      # альтернатива JWKS для HS256
+  # hmacSecret: "plain:..."  # альтернатива JWKS для HS256 (или путь в Vault)
   publicRead: true       # анонимное чтение (GET); запись всегда требует вход
   editorGroups: []       # пусто → писать может любой вошедший; иначе — только
                          # члены этих групп/ролей (claim groups или realm_access.roles)
   # --- режим 2: встроенный OAuth-логин (без IAM; работают одновременно) ---
-  # publicUrl: "https://docs.example.com"   # для redirect_uri
-  # sessionSecret: "случайная-строка"        # подпись cookie-сессий (задать в проде!)
-  # defaultRole: editor                      # роль новых пользователей: reader | editor
-  # adminEmails: ["boss@example.com"]        # бутстрап админов
+  # publicUrl: "https://docs.example.com"          # для redirect_uri
+  # sessionSecret: "plain:случайная-строка"         # подпись cookie-сессий (задать в проде!)
+  # defaultRole: editor                             # роль новых пользователей: reader | editor
+  # adminEmails: ["boss@example.com"]               # бутстрап админов
   # providers:
-  #   google: { clientId: "...", clientSecret: "..." }
-  #   yandex: { clientId: "...", clientSecret: "..." }
-  #   vk:     { clientId: "...", clientSecret: "..." }
-  #   apple:  { clientId: "...", teamId: "...", keyId: "...", privateKey: "..." } # .p8
+  #   google: { clientId: "...", clientSecret: "plain:..." }
+  #   yandex: { clientId: "...", clientSecret: "plain:..." }
+  #   vk:     { clientId: "...", clientSecret: "plain:..." }
+  #   apple:  { clientId: "...", teamId: "...", keyId: "...", privateKey: "plain:..." } # .p8
   #   oidc:                                    # любой OIDC IdP: Keycloak, Authentik, Dex…
   #     label: "Keycloak"
   #     issuer: "https://keycloak.corp.local/realms/teamdocs"
   #     clientId: "teamdocs"
-  #     clientSecret: "..."
+  #     clientSecret: "plain:..."             # или путь в Vault: kv/data/teamdocs?field=oidc
   #     # groupsClaim: groups  # + всегда читается realm_access.roles (Keycloak);
   #     #                        группы работают с editorGroups
   # --- режим 3: LDAP (FreeIPA / OpenLDAP / Active Directory) ---
@@ -124,14 +132,14 @@ auth:
   #   preset: ad                       # ad | freeipa | openldap
   #   baseDn: dc=corp,dc=local
   #   bindLogin: svc-teamdocs          # DN / UPN / короткий логин (см. bindLoginTemplate)
-  #   bindPassword: "..."
+  #   bindPassword: "plain:..."        # или путь в Vault
   #   adminGroups: ["docs-admins"]     # DN или CN групп с ролью admin
   #   nestedGroups: true               # вложенные группы (FreeIPA/OpenLDAP; AD — всегда)
   #   syncGroups: true                 # зеркалировать группы в локальные:
   #                                    # роль в проекте можно выдать LDAP-группе
   # localAdmin:                        # break-glass: работает даже при упавшем LDAP
   #   username: root
-  #   passwordHash: "$2y$..."          # bcrypt: htpasswd -nbB x 'пароль'
+  #   passwordHash: "plain:$2y$..."    # bcrypt: htpasswd -nbB x 'пароль'
 ```
 
 Схема БД применяется автоматически при старте (миграции встроены в бинарь).

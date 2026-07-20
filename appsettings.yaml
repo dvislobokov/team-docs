@@ -30,7 +30,10 @@ auth:
   # jwksUrl: "http://keycloak:8080/realms/teamdocs/protocol/openid-connect/certs"
   # issuer: "http://keycloak:8080/realms/teamdocs"
   # audience: "team-docs"
-  # hmacSecret: ""                         # альтернатива JWKS для HS256-токенов
+  # Секреты (hmacSecret, sessionSecret, clientSecret, bindPassword, …) задаются
+  # либо напрямую с префиксом plain:, либо путём в Vault (нужен VAULT_ADDR):
+  # hmacSecret: "plain:мой-секрет"           # альтернатива JWKS для HS256-токенов
+  # hmacSecret: "secret/data/teamdocs?field=hmac"
   # usernameClaim: preferred_username
   # nameClaim: name
   # emailClaim: email
