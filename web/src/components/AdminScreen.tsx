@@ -84,7 +84,7 @@ export function AdminScreen() {
   return (
     <>
       <Topbar crumbs={[{ id: -1, title: "Администрирование", icon: "🛠️" }]} />
-      <section className="animate-page-in mx-auto w-full max-w-[1000px] px-6 py-10 md:py-14">
+      <section className="animate-page-in w-full max-w-[1000px] px-6 py-10 md:px-10 md:py-14">
         <h1 className="font-display text-[30px] font-500 text-ink">Администрирование</h1>
 
         <div className="mt-8 flex flex-col gap-8 md:flex-row">
