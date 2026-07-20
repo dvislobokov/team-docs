@@ -20,8 +20,8 @@
   текст и наоборот).
 - **Mermaid**: блок-схемы, sequence, gantt, class, ER, state, mindmap — и
   **графики** (столбцы/линия через `xychart`, круговая). Рендер под тему, lazy-load.
-- **OpenAPI**: блок с полноценным рендером спецификации через **Redoc**
-  (трёхколоночная документация, схемы, примеры, разрешение `$ref`). Источник —
+- **OpenAPI**: блок с полноценным рендером спецификации через **Swagger UI**
+  (операции, схемы, примеры, Try it out, разрешение `$ref`). Источник —
   URL или вставленный YAML/JSON. Тема-совместимый (light/dark), lazy-load.
 - **Медиа**: загрузка картинок/файлов — содержимое хранится в БД (BYTEA).
 
@@ -56,7 +56,7 @@ HS256 по секрету). По умолчанию выключена — от�
 ## Стек
 
 - **Фронт:** React 19 + TypeScript + Tailwind CSS + Radix + BlockNote
-  (`+ xl-multi-column`, `mermaid`, `redoc` для OpenAPI, `floating-ui`) на Vite.
+  (`+ xl-multi-column`, `mermaid`, `swagger-ui-dist` для OpenAPI, `floating-ui`) на Vite.
   Локальные шрифты PT Serif / Inter / JetBrains Mono.
 - **Бэк:** Go + [Echo](https://echo.labstack.com/), JWT ([golang-jwt](https://github.com/golang-jwt/jwt)).
 - **БД:** PostgreSQL, доступ через [sqlc](https://sqlc.dev/) + `pgx/v5`.

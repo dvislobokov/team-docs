@@ -6,8 +6,8 @@ import { createPage, deletePage, getPage, getRevision, updatePage } from "../api
 import { ConflictError } from "../api/client";
 import type { Page, PageTreeNode } from "../api/types";
 import { extractHeadings, isEmptyDoc, readingMinutes } from "../lib/blocks";
-import { useContentWidth, WIDTH_CLASS } from "../lib/contentWidth";
 import { readingLabel, relativeTime } from "../lib/format";
+import { useHotkey } from "../lib/hotkeys";
 import { exportPageMarkdown } from "../lib/pageActions";
 import { pushRecent } from "../lib/recents";
 import { useTheme } from "../lib/theme";
@@ -37,7 +37,6 @@ export function PageScreen() {
   const navigate = useNavigate();
   const location = useLocation();
   const theme = useTheme();
-  const width = useContentWidth();
   const { nodes, reload, projects, project, setProject } = useTree();
   const user = useAuth();
   const { canEdit } = user;
@@ -245,6 +244,30 @@ export function PageScreen() {
     toast("Экспортировано в Markdown", "success");
   };
 
+  // Горячие клавиши страницы (см. lib/hotkeys.ts; справка — Ctrl+/).
+  // Хуки должны стоять до ранних return; право правки считаем внутри
+  // хендлеров — page на момент нажатия может отличаться.
+  const hotkeyEditable = () => {
+    const p = pageRef.current;
+    return !!p && canEdit && p.canEdit !== false;
+  };
+  useHotkey({ code: "KeyS", allowInEditable: true }, () => {
+    if (!hotkeyEditable()) return; // preventDefault всё равно гасит диалог браузера
+    if (timerRef.current) clearTimeout(timerRef.current);
+    void doSave();
+  });
+  useHotkey({ code: "KeyE", allowInEditable: true }, () => {
+    if (hotkeyEditable()) setEditing((v) => !v);
+  });
+  useHotkey({ code: "KeyS", alt: true }, () => {
+    const p = pageRef.current;
+    if (user.authenticated && p && !p.isTemplate) void toggleFavorite(p.id);
+  });
+  useHotkey({ code: "KeyP", alt: true }, () => void doExport());
+  useHotkey({ code: "KeyD", alt: true }, () => {
+    if (pageRef.current?.isTemplate && hotkeyEditable()) void createFromTemplate();
+  });
+
   if (loadError) {
     return (
       <>
@@ -358,10 +381,10 @@ export function PageScreen() {
       )}
 
       <section key={page.id} className="animate-page-in py-8 md:py-12">
-        {/* Контент центрируем в свободном пространстве, правый список — к краю. */}
+        {/* Контент на всю ширину (как в Confluence), правый список — к краю. */}
         <div className="flex w-full gap-8 px-5 md:px-10 xl:px-16">
           <div className="flex min-w-0 flex-1 justify-center">
-            <article className={"w-full " + WIDTH_CLASS[width]}>
+            <article className="w-full">
           <div className="flex items-center gap-3">
             <EmojiButton
               value={page.icon}

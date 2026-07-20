@@ -1,20 +1,18 @@
 import { useEffect, useRef, useState } from "react";
 import { Check, Compass, Moon, SlidersHorizontal, Sun } from "lucide-react";
-import { setContentWidth, useContentWidth, WIDTH_LABEL, type ContentWidth } from "../lib/contentWidth";
 import { setTheme, useTheme, type Theme } from "../lib/theme";
 import { SCALE_LABEL, setUIScale, useUIScale, type UIScale } from "../lib/uiScale";
 import { startTour } from "../lib/tour";
 import { useBranding } from "../store/branding";
 
-const WIDTHS: ContentWidth[] = ["narrow", "medium", "wide"];
 const SCALES: UIScale[] = ["small", "medium", "large"];
 
-// Кнопка в топбаре с сабменю: оформление (светло/тёмно), ширина контента и
+// Кнопка в топбаре с сабменю: оформление (светло/тёмно), размер интерфейса и
 // цветовая схема (из /api/branding, выбор сохраняется в localStorage).
+// Ширина контента фиксированная — на всю страницу, как в Confluence.
 // Экспорт/импорт БД — в /admin, секция «Данные».
 export function DisplaySettings() {
   const theme = useTheme();
-  const width = useContentWidth();
   const scale = useUIScale();
   const { themes, schemeId, setScheme } = useBranding();
   const [open, setOpen] = useState(false);
@@ -64,16 +62,6 @@ export function DisplaySettings() {
               {SCALES.map((s) => (
                 <Segment key={s} active={scale === s} onClick={() => setUIScale(s)}>
                   {SCALE_LABEL[s]}
-                </Segment>
-              ))}
-            </div>
-          </Section>
-
-          <Section title="Ширина контента">
-            <div className="grid grid-cols-3 gap-1.5">
-              {WIDTHS.map((w) => (
-                <Segment key={w} active={width === w} onClick={() => setContentWidth(w)}>
-                  {WIDTH_LABEL[w]}
                 </Segment>
               ))}
             </div>

@@ -1,18 +1,12 @@
-// Полнофункциональный рендер OpenAPI внутри страницы через Redoc
-// (трёхколоночная документация, схемы, примеры, разрешение $ref).
-// Redoc тяжёлый — грузится лениво (отдельный чанк, только на страницах с блоком).
-// Источник — URL (Redoc фетчит сам) или вставленный YAML/JSON (парсим в объект).
+// Рендер OpenAPI внутри страницы через Swagger UI (swagger-ui-dist, без
+// React-обёртки — бандл фреймворк-независимый и не отстаёт от React).
+// Swagger UI тяжёлый — грузится лениво (отдельный чанк, только на страницах
+// с блоком). Источник — URL (Swagger фетчит сам) или вставленный YAML/JSON
+// (парсим в объект). Тёмная тема — CSS-оверрайды .td-swagger в index.css.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { Braces, Maximize2, Minimize2 } from "lucide-react";
-import { useTheme } from "../lib/theme";
-
-// Ленивая загрузка Redoc: тянется только когда блок реально рендерится.
-const RedocStandalone = lazy(async () => {
-  const mod = await import("redoc");
-  return { default: mod.RedocStandalone };
-});
 
 export const OPENAPI_SAMPLE = `openapi: 3.0.3
 info:
@@ -59,63 +53,52 @@ async function parseInline(text: string): Promise<any> {
   }
 }
 
-// Читает CSS-токен вида "251 250 248" → "rgb(251 250 248)".
-function tokenRGB(name: string, fallback: string): string {
-  if (typeof window === "undefined") return fallback;
-  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return v ? `rgb(${v})` : fallback;
+// Однократная ленивая загрузка бандла и его CSS.
+let bundlePromise: Promise<any> | null = null;
+function loadSwagger(): Promise<any> {
+  bundlePromise ??= Promise.all([
+    import("swagger-ui-dist/swagger-ui-es-bundle"),
+    import("swagger-ui-dist/swagger-ui.css"),
+  ]).then(([m]) => m.default);
+  return bundlePromise;
 }
 
-// Тема Redoc из токенов приложения (адаптирует акцент, шрифты и тёмный режим).
-function redocTheme(dark: boolean) {
-  const accent = tokenRGB("--c-accent", "rgb(59 130 246)");
-  const ink = tokenRGB("--c-ink", dark ? "rgb(237 237 240)" : "rgb(20 20 25)");
-  const body = tokenRGB("--c-body", dark ? "rgb(200 200 210)" : "rgb(70 70 80)");
-  const card = tokenRGB("--c-card", dark ? "rgb(32 32 40)" : "rgb(255 255 255)");
-  const paper = tokenRGB("--c-paper", dark ? "rgb(24 24 30)" : "rgb(251 250 248)");
-  const line = tokenRGB("--c-line", dark ? "rgb(60 60 72)" : "rgb(230 228 224)");
+// Монтирует Swagger UI в неуправляемый React'ом div.
+function SwaggerView({ spec, url }: { spec?: unknown; url?: string }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [loading, setLoading] = useState(true);
 
-  return {
-    colors: {
-      primary: { main: accent },
-      text: { primary: ink, secondary: body },
-      border: { light: line, dark: line },
-      http: {
-        get: "rgb(59 130 246)",
-        post: "rgb(16 185 129)",
-        put: "rgb(245 158 11)",
-        patch: "rgb(168 85 247)",
-        delete: "rgb(239 68 68)",
-      },
-    },
-    typography: {
-      fontFamily: 'Inter, ui-sans-serif, system-ui, sans-serif',
-      fontSize: "14px",
-      headings: { fontFamily: "Inter, ui-sans-serif, sans-serif", fontWeight: "600" },
-      code: {
-        fontFamily: 'JetBrains Mono, ui-monospace, monospace',
-        fontSize: "12.5px",
-        color: dark ? "rgb(230 230 240)" : "rgb(30 30 40)",
-        backgroundColor: dark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.04)",
-      },
-    },
-    sidebar: {
-      backgroundColor: paper,
-      textColor: body,
-      activeTextColor: accent,
-      arrow: { color: body },
-    },
-    rightPanel: {
-      backgroundColor: dark ? "rgb(18 18 24)" : "rgb(38 40 52)",
-      textColor: "rgb(240 240 245)",
-    },
-    schema: {
-      nestedBackground: dark ? "rgba(255,255,255,0.03)" : "rgba(0,0,0,0.02)",
-      typeNameColor: accent,
-    },
-    // Для тёмной темы окрашиваем основную панель.
-    ...(dark ? { background: card } : {}),
-  };
+  useEffect(() => {
+    const node = ref.current;
+    if (!node) return;
+    let cancelled = false;
+    void loadSwagger().then((SwaggerUIBundle) => {
+      if (cancelled) return;
+      setLoading(false);
+      SwaggerUIBundle({
+        domNode: node,
+        ...(url ? { url } : { spec }),
+        deepLinking: false,
+        docExpansion: "list",
+        defaultModelsExpandDepth: 1,
+        displayRequestDuration: true,
+        validatorUrl: null,
+      });
+    });
+    return () => {
+      cancelled = true;
+      node.innerHTML = "";
+    };
+  }, [spec, url]);
+
+  return (
+    <>
+      {loading && (
+        <div className="px-4 py-8 text-center text-[13px] text-muted">Загрузка Swagger UI…</div>
+      )}
+      <div ref={ref} />
+    </>
+  );
 }
 
 export function OpenApiBlock({
@@ -126,8 +109,6 @@ export function OpenApiBlock({
   editor: { isEditable: boolean; updateBlock: (b: any, u: any) => void };
 }) {
   const source = block.props.source || OPENAPI_SAMPLE;
-  const theme = useTheme();
-  const dark = theme === "dark";
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(source);
   const [spec, setSpec] = useState<any>(null); // распарсенный объект для inline
@@ -154,7 +135,7 @@ export function OpenApiBlock({
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(region);
-    ro.observe(flow); // ширина колонки меняется (narrow/medium/wide) → пересчёт сдвига
+    ro.observe(flow);
     window.addEventListener("resize", measure);
     return () => {
       ro.disconnect();
@@ -178,7 +159,7 @@ export function OpenApiBlock({
   const active = editing ? draft : source;
   const asUrl = isUrl(active);
 
-  // Для inline-спеки парсим в объект; для URL отдаём его Redoc напрямую.
+  // Для inline-спеки парсим в объект; URL отдаём Swagger UI напрямую.
   useEffect(() => {
     if (asUrl) {
       setSpec(null);
@@ -205,35 +186,18 @@ export function OpenApiBlock({
     };
   }, [active, asUrl]);
 
-  const options = useMemo(
-    () => ({
-      hideDownloadButton: true,
-      nativeScrollbars: true,
-      expandResponses: "200,201",
-      scrollYOffset: 0,
-      menuToggle: true,
-      theme: redocTheme(dark) as any,
-    }),
-    [dark],
-  );
-
   const commit = () => {
     setEditing(false);
     if (draft !== source) editor.updateBlock(block, { props: { source: draft } });
   };
 
-  const loading = <div className="px-4 py-8 text-center text-[13px] text-muted">Загрузка Redoc…</div>;
-
-  // Сам рендер Redoc (общий для inline и полноэкранного режима).
-  const redoc = (keyPrefix: string) => (
-    <Suspense fallback={loading}>
-      {asUrl ? (
-        <RedocStandalone key={`${keyPrefix}-u-${dark}`} specUrl={active.trim()} options={options} />
-      ) : (
-        <RedocStandalone key={`${keyPrefix}-s-${dark}`} spec={spec} options={options} />
-      )}
-    </Suspense>
-  );
+  // Сам рендер Swagger UI (общий для inline и полноэкранного режима).
+  const swagger = (keyPrefix: string) =>
+    asUrl ? (
+      <SwaggerView key={`${keyPrefix}-u`} url={active.trim()} />
+    ) : (
+      <SwaggerView key={`${keyPrefix}-s`} spec={spec} />
+    );
 
   const hasSpec = asUrl || spec;
 
@@ -246,7 +210,7 @@ export function OpenApiBlock({
       >
         <div className="flex items-center gap-2 border-b border-line px-3 py-1.5">
           <Braces className="h-3.5 w-3.5 text-faint" />
-          <span className="font-mono text-[11px] uppercase tracking-wide text-faint">OpenAPI · Redoc</span>
+          <span className="font-mono text-[11px] uppercase tracking-wide text-faint">OpenAPI · Swagger</span>
           {asUrl && !editing && (
             <span className="truncate font-mono text-[11px] text-muted">· {active.trim()}</span>
           )}
@@ -290,11 +254,11 @@ export function OpenApiBlock({
         ) : full ? (
           <div className="px-4 py-10 text-center text-[13px] text-muted">Открыто на весь экран…</div>
         ) : hasSpec ? (
-          <div className="td-redoc overflow-auto bg-paper" style={{ height: "78vh", contain: "layout paint" }}>
-            {redoc("inline")}
+          <div className="td-swagger overflow-auto bg-paper" style={{ height: "78vh", contain: "layout paint" }}>
+            {swagger("inline")}
           </div>
         ) : (
-          loading
+          <div className="px-4 py-8 text-center text-[13px] text-muted">Загрузка…</div>
         )}
       </div>
 
@@ -305,7 +269,7 @@ export function OpenApiBlock({
             <div className="flex items-center gap-2 border-b border-line bg-card px-4 py-2">
               <Braces className="h-4 w-4 text-faint" />
               <span className="font-mono text-[12px] uppercase tracking-wide text-faint">
-                OpenAPI · Redoc
+                OpenAPI · Swagger
               </span>
               {asUrl && <span className="truncate font-mono text-[12px] text-muted">· {active.trim()}</span>}
               <button
@@ -317,7 +281,7 @@ export function OpenApiBlock({
                 <Minimize2 className="h-4 w-4" /> Свернуть
               </button>
             </div>
-            <div className="td-redoc min-h-0 flex-1 overflow-auto bg-paper">{redoc("full")}</div>
+            <div className="td-swagger min-h-0 flex-1 overflow-auto bg-paper">{swagger("full")}</div>
           </div>,
           document.body,
         )}

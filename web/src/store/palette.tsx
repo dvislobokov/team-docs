@@ -21,7 +21,8 @@ export function PaletteProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+      // e.code, а не e.key: физическая клавиша K срабатывает в любой раскладке.
+      if ((e.metaKey || e.ctrlKey) && !e.altKey && !e.shiftKey && e.code === "KeyK") {
         e.preventDefault();
         setOpen((v) => !v);
       }

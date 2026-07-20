@@ -363,3 +363,98 @@
   max-width: 100% !important;
   height: auto;
 }
+
+/* ─ Swagger UI (блок OpenAPI) — шрифты приложения и тёмная тема ─ */
+.td-swagger .swagger-ui {
+  font-family: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+}
+.td-swagger .swagger-ui .wrapper {
+  padding: 0 16px;
+  max-width: none;
+}
+.td-swagger .swagger-ui .info {
+  margin: 20px 0;
+}
+.td-swagger .swagger-ui .scheme-container {
+  background: transparent;
+  box-shadow: none;
+  padding: 8px 0;
+}
+.td-swagger .swagger-ui code,
+.td-swagger .swagger-ui .microlight,
+.td-swagger .swagger-ui .opblock-summary-path {
+  font-family: "JetBrains Mono Variable", ui-monospace, monospace;
+}
+
+/* Тёмная тема: у Swagger UI её нет — переопределяем токенами приложения. */
+.dark .td-swagger .swagger-ui,
+.dark .td-swagger .swagger-ui .info .title,
+.dark .td-swagger .swagger-ui .info li,
+.dark .td-swagger .swagger-ui .info p,
+.dark .td-swagger .swagger-ui .info .base-url,
+.dark .td-swagger .swagger-ui .opblock-tag,
+.dark .td-swagger .swagger-ui .opblock .opblock-summary-description,
+.dark .td-swagger .swagger-ui .opblock .opblock-summary-operation-id,
+.dark .td-swagger .swagger-ui .opblock .opblock-summary-path,
+.dark .td-swagger .swagger-ui .opblock .opblock-section-header h4,
+.dark .td-swagger .swagger-ui .opblock-description-wrapper p,
+.dark .td-swagger .swagger-ui .opblock-title_normal p,
+.dark .td-swagger .swagger-ui .parameter__name,
+.dark .td-swagger .swagger-ui .parameter__type,
+.dark .td-swagger .swagger-ui .parameter__in,
+.dark .td-swagger .swagger-ui table thead tr th,
+.dark .td-swagger .swagger-ui table thead tr td,
+.dark .td-swagger .swagger-ui .response-col_status,
+.dark .td-swagger .swagger-ui .response-col_links,
+.dark .td-swagger .swagger-ui .responses-inner h4,
+.dark .td-swagger .swagger-ui .responses-inner h5,
+.dark .td-swagger .swagger-ui .tab li,
+.dark .td-swagger .swagger-ui .model,
+.dark .td-swagger .swagger-ui .model-title,
+.dark .td-swagger .swagger-ui .models-control,
+.dark .td-swagger .swagger-ui section.models h4,
+.dark .td-swagger .swagger-ui .prop-format,
+.dark .td-swagger .swagger-ui label,
+.dark .td-swagger .swagger-ui .btn {
+  color: rgb(var(--c-body));
+}
+.dark .td-swagger .swagger-ui .info .title,
+.dark .td-swagger .swagger-ui .opblock-tag {
+  color: rgb(var(--c-ink));
+}
+.dark .td-swagger .swagger-ui .opblock {
+  background: rgb(255 255 255 / 0.03);
+  border-color: rgb(var(--c-line));
+  box-shadow: none;
+}
+.dark .td-swagger .swagger-ui .opblock .opblock-section-header {
+  background: rgb(var(--c-card));
+  box-shadow: none;
+}
+.dark .td-swagger .swagger-ui section.models,
+.dark .td-swagger .swagger-ui section.models .model-container {
+  background: rgb(255 255 255 / 0.03);
+  border-color: rgb(var(--c-line));
+}
+.dark .td-swagger .swagger-ui .model-box {
+  background: rgb(255 255 255 / 0.04);
+}
+.dark .td-swagger .swagger-ui input[type="text"],
+.dark .td-swagger .swagger-ui input[type="password"],
+.dark .td-swagger .swagger-ui input[type="email"],
+.dark .td-swagger .swagger-ui textarea,
+.dark .td-swagger .swagger-ui select {
+  background: rgb(var(--c-card));
+  color: rgb(var(--c-ink));
+  border-color: rgb(var(--c-line));
+}
+.dark .td-swagger .swagger-ui .btn {
+  border-color: rgb(var(--c-line));
+}
+.dark .td-swagger .swagger-ui svg {
+  fill: rgb(var(--c-body));
+}
+.dark .td-swagger .swagger-ui .opblock-tag,
+.dark .td-swagger .swagger-ui .opblock {
+  border-bottom-color: rgb(var(--c-line));
+}

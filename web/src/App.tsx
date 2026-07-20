@@ -1,5 +1,6 @@
 import { Outlet } from "react-router-dom";
 import { CommandPalette } from "./components/CommandPalette";
+import { GlobalHotkeys } from "./components/GlobalHotkeys";
 import { Sidebar } from "./components/Sidebar";
 import { Tour } from "./components/Tour";
 import { AuthProvider } from "./store/auth";
@@ -45,6 +46,7 @@ export function App() {
                     <PaletteProvider>
                       <Shell />
                       <CommandPalette />
+                      <GlobalHotkeys />
                       <Tour />
                     </PaletteProvider>
                   </SidebarProvider>

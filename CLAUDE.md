@@ -64,7 +64,7 @@ docker compose -f docker-compose.test.yml down -v                 # остано
 
 **Конфиг** — `appsettings.yaml` + env с префиксом `TEAMDOCS_` (вложенность через `__`), библиотека sconf. Пресеты цветовых схем — в `internal/config/themes.go`, фронт получает их через `GET /api/branding` (брендинг меняется без пересборки фронта).
 
-**Фронт** (`web/src`): `api/` — типизированный клиент к REST, `components/` — экраны и блоки (в т.ч. кастомные BlockNote-блоки: Mermaid, OpenAPI/Redoc), `lib/editorSchema.tsx` — схема редактора с кастомными блоками, `store/` — состояние. React 19 + Tailwind + Radix.
+**Фронт** (`web/src`): `api/` — типизированный клиент к REST, `components/` — экраны и блоки (в т.ч. кастомные BlockNote-блоки: Mermaid, OpenAPI/Swagger UI), `lib/editorSchema.tsx` — схема редактора с кастомными блоками, `store/` — состояние. React 19 + Tailwind + Radix.
 
 ## Нюансы
 
