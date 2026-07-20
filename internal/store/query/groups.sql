@@ -8,6 +8,22 @@ ORDER BY g.name;
 -- name: CreateGroup :one
 INSERT INTO groups (name) VALUES ($1) RETURNING *;
 
+-- name: UpsertLDAPGroup :one
+-- Зеркало LDAP-группы; одноимённая локальная группа переиспользуется
+-- (source не перетирается).
+INSERT INTO groups (name, source) VALUES ($1, 'ldap')
+ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+RETURNING id;
+
+-- name: PruneLDAPMemberships :exec
+-- Убрать пользователя из ldap-зеркал, которых больше нет в его группах.
+DELETE FROM group_members gm
+USING groups g
+WHERE g.id = gm.group_id
+  AND g.source = 'ldap'
+  AND gm.user_id = $1
+  AND g.id <> ALL(sqlc.arg(keep_ids)::bigint[]);
+
 -- name: DeleteGroup :execrows
 DELETE FROM groups WHERE id = $1;
 

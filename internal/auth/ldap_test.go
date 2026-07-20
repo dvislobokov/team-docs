@@ -183,6 +183,10 @@ func seedLDAP(t *testing.T, url string) {
 	add("cn=docs-admins,ou=groups,"+ldapTestBase, map[string][]string{
 		"objectClass": {"groupOfNames"}, "cn": {"docs-admins"},
 		"member": {"uid=ivanov,ou=people," + ldapTestBase}})
+	// Вложенность: docs-admins ⊂ all-staff (фаза 2, nestedGroups).
+	add("cn=all-staff,ou=groups,"+ldapTestBase, map[string][]string{
+		"objectClass": {"groupOfNames"}, "cn": {"all-staff"},
+		"member": {"cn=docs-admins,ou=groups," + ldapTestBase}})
 }
 
 func TestOpenLDAPIntegration(t *testing.T) {
@@ -249,5 +253,78 @@ func TestOpenLDAPIntegration(t *testing.T) {
 	check := l.Check()
 	if check["connect"] != "ok" || check["serviceBind"] != "ok" || check["bindName"] != ldapTestAdmin {
 		t.Fatalf("check: %v", check)
+	}
+}
+
+// Фаза 2: вложенные группы рекурсией и зеркалирование в локальные.
+func TestLDAPNestedAndMirroring(t *testing.T) {
+	url := os.Getenv("TEAMDOCS_TEST_LDAP_URL")
+	if url == "" {
+		t.Skip("TEAMDOCS_TEST_LDAP_URL не задан — пропускаю LDAP-тест")
+	}
+	pool := oauthPool(t)
+	seedLDAP(t, url)
+	ctx := t.Context()
+	t.Cleanup(func() {
+		_, _ = pool.Exec(ctx, `DELETE FROM users WHERE subject = 'ldap:ivanov'`)
+		_, _ = pool.Exec(ctx, `DELETE FROM groups WHERE source = 'ldap'`)
+	})
+
+	cfg := config.AuthSettings{Enabled: true, HMACSecret: "x", DefaultRole: "reader"}
+	cfg.LDAP = config.LDAPSettings{
+		URL: url, Preset: "openldap", BaseDN: ldapTestBase,
+		BindLogin: ldapTestAdmin, BindPassword: ldapTestPass, EmailAttr: "mail",
+		NestedGroups: true, SyncGroups: true,
+	}
+	l, err := NewLDAP(cfg.LDAP)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Вложенная группа all-staff находится рекурсией (ivanov в ней только
+	// через docs-admins).
+	u, err := l.Authenticate("ivanov", "ivanov-pass")
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := map[string]bool{}
+	for _, g := range u.Groups {
+		found[g] = true
+	}
+	if !found["docs-admins"] || !found["all-staff"] {
+		t.Fatalf("вложенные группы: %v", u.Groups)
+	}
+
+	// Зеркалирование: группы появляются как локальные (source=ldap),
+	// членство синхронизируется, устаревшие зеркала чистятся.
+	reg := NewRegistry(pool, cfg)
+	if u.ID, u.Role, err = reg.EnsureUser(ctx, u); err != nil {
+		t.Fatal(err)
+	}
+	if err := reg.SyncLDAPGroups(ctx, u.ID, GroupNames(u.Groups)); err != nil {
+		t.Fatalf("sync: %v", err)
+	}
+	var n int
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM group_members gm
+		JOIN groups g ON g.id = gm.group_id
+		WHERE gm.user_id = $1 AND g.source = 'ldap'`, u.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 2 {
+		t.Fatalf("зеркальных членств %d, ожидалось 2", n)
+	}
+	// Повторный sync с уменьшившимся набором убирает лишнее зеркало.
+	if err := reg.SyncLDAPGroups(ctx, u.ID, []string{"docs-admins"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := pool.QueryRow(ctx, `
+		SELECT COUNT(*) FROM group_members gm
+		JOIN groups g ON g.id = gm.group_id
+		WHERE gm.user_id = $1 AND g.source = 'ldap'`, u.ID).Scan(&n); err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 {
+		t.Fatalf("после prune членств %d, ожидалось 1", n)
 	}
 }

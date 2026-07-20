@@ -31,6 +31,7 @@ type Group struct {
 	ID        int64              `json:"id"`
 	Name      string             `json:"name"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	Source    string             `json:"source"`
 }
 
 type GroupMember struct {

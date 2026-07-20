@@ -332,11 +332,64 @@ func (l *LDAPAuthenticator) groupsOf(conn *ldap.Conn, entry *ldap.Entry, login s
 		}
 	}
 
+	// Вложенные группы для FreeIPA/OpenLDAP: рекурсивный поиск родителей
+	// (группы, где member = DN уже известной группы) с лимитом глубины.
+	if l.cfg.NestedGroups && !l.preset.nestedAD {
+		depth := l.cfg.NestedDepth
+		if depth <= 0 {
+			depth = 5
+		}
+		frontier := groupDNs(set)
+		for d := 0; d < depth && len(frontier) > 0; d++ {
+			var next []string
+			for _, dn := range frontier {
+				res, err := conn.Search(ldap.NewSearchRequest(
+					groupBase, ldap.ScopeWholeSubtree, ldap.NeverDerefAliases, 0, 0, false,
+					"(member="+ldap.EscapeFilter(dn)+")", []string{"dn"}, nil))
+				if err != nil {
+					continue
+				}
+				for _, e := range res.Entries {
+					if !set[e.DN] {
+						add(e.DN)
+						next = append(next, e.DN)
+					}
+				}
+			}
+			frontier = next
+		}
+	}
+
 	out := make([]string, 0, len(set))
 	for g := range set {
 		out = append(out, g)
 	}
 	return out, nil
+}
+
+// groupDNs — только DN из набора (CN-дубли отбрасываются).
+func groupDNs(set map[string]bool) []string {
+	var out []string
+	for g := range set {
+		if strings.Contains(g, "=") {
+			out = append(out, g)
+		}
+	}
+	return out
+}
+
+// SyncEnabled — включено ли зеркалирование групп в локальные.
+func (l *LDAPAuthenticator) SyncEnabled() bool { return l.cfg.SyncGroups }
+
+// GroupNames — CN-имена групп (без DN-дублей) для зеркалирования.
+func GroupNames(groups []string) []string {
+	var out []string
+	for _, g := range groups {
+		if !strings.Contains(g, "=") {
+			out = append(out, g)
+		}
+	}
+	return out
 }
 
 // IsAdminGroupMember — состоит ли пользователь в одной из ldap.adminGroups

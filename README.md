@@ -126,6 +126,9 @@ auth:
   #   bindLogin: svc-teamdocs          # DN / UPN / короткий логин (см. bindLoginTemplate)
   #   bindPassword: "..."
   #   adminGroups: ["docs-admins"]     # DN или CN групп с ролью admin
+  #   nestedGroups: true               # вложенные группы (FreeIPA/OpenLDAP; AD — всегда)
+  #   syncGroups: true                 # зеркалировать группы в локальные:
+  #                                    # роль в проекте можно выдать LDAP-группе
   # localAdmin:                        # break-glass: работает даже при упавшем LDAP
   #   username: root
   #   passwordHash: "$2y$..."          # bcrypt: htpasswd -nbB x 'пароль'

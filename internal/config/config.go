@@ -167,6 +167,14 @@ type LDAPSettings struct {
 	GroupFilter string `yaml:"groupFilter" default:""`
 	// AdminGroups — DN или CN групп, дающих роль admin.
 	AdminGroups []string `yaml:"adminGroups"`
+
+	// NestedGroups — разворачивать вложенные группы для FreeIPA/OpenLDAP
+	// рекурсивным поиском родителей (AD делает это chain-matching'ом всегда).
+	NestedGroups bool `yaml:"nestedGroups" default:"false"`
+	NestedDepth  int  `yaml:"nestedDepth" default:"5"`
+	// SyncGroups — зеркалировать LDAP-группы в локальные при входе: роль в
+	// проекте можно выдать LDAP-группе через админку.
+	SyncGroups bool `yaml:"syncGroups" default:"false"`
 }
 
 // ProvidersSettings — клиенты OAuth-провайдеров. Провайдер считается

@@ -86,11 +86,17 @@ func (h *PasswordHandler) login(c echo.Context) error {
 	if h.ldap.IsAdminGroupMember(u.Groups) {
 		err = h.reg.EnsureRole(ctx, u, RoleAdmin)
 	} else {
-		_, _, err = h.reg.EnsureUser(ctx, u)
+		u.ID, u.Role, err = h.reg.EnsureUser(ctx, u)
 	}
 	if err != nil {
 		h.log.Error(err, "auth: ldap user upsert failed for {Subject}", u.Subject)
 		return echo.NewHTTPError(http.StatusInternalServerError, "internal error")
+	}
+	// Зеркалирование групп (фаза 2): роль в проекте можно выдать LDAP-группе.
+	if h.ldap.SyncEnabled() && u.ID != 0 {
+		if err := h.reg.SyncLDAPGroups(ctx, u.ID, GroupNames(u.Groups)); err != nil {
+			h.log.Error(err, "auth: ldap group sync failed for {Subject}", u.Subject)
+		}
 	}
 	if err := h.a.IssueSession(c, u); err != nil {
 		return echo.NewHTTPError(http.StatusInternalServerError, "internal error")

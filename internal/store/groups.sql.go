@@ -28,13 +28,18 @@ func (q *Queries) AddGroupMember(ctx context.Context, arg AddGroupMemberParams) 
 }
 
 const createGroup = `-- name: CreateGroup :one
-INSERT INTO groups (name) VALUES ($1) RETURNING id, name, created_at
+INSERT INTO groups (name) VALUES ($1) RETURNING id, name, created_at, source
 `
 
 func (q *Queries) CreateGroup(ctx context.Context, name string) (Group, error) {
 	row := q.db.QueryRow(ctx, createGroup, name)
 	var i Group
-	err := row.Scan(&i.ID, &i.Name, &i.CreatedAt)
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.CreatedAt,
+		&i.Source,
+	)
 	return i, err
 }
 
@@ -186,6 +191,26 @@ func (q *Queries) ListProjectGroups(ctx context.Context, projectID int64) ([]Lis
 	return items, nil
 }
 
+const pruneLDAPMemberships = `-- name: PruneLDAPMemberships :exec
+DELETE FROM group_members gm
+USING groups g
+WHERE g.id = gm.group_id
+  AND g.source = 'ldap'
+  AND gm.user_id = $1
+  AND g.id <> ALL($2::bigint[])
+`
+
+type PruneLDAPMembershipsParams struct {
+	UserID  int64   `json:"user_id"`
+	KeepIds []int64 `json:"keep_ids"`
+}
+
+// Убрать пользователя из ldap-зеркал, которых больше нет в его группах.
+func (q *Queries) PruneLDAPMemberships(ctx context.Context, arg PruneLDAPMembershipsParams) error {
+	_, err := q.db.Exec(ctx, pruneLDAPMemberships, arg.UserID, arg.KeepIds)
+	return err
+}
+
 const removeGroupMember = `-- name: RemoveGroupMember :exec
 DELETE FROM group_members WHERE group_id = $1 AND user_id = $2
 `
@@ -212,6 +237,21 @@ type RemoveProjectGroupParams struct {
 func (q *Queries) RemoveProjectGroup(ctx context.Context, arg RemoveProjectGroupParams) error {
 	_, err := q.db.Exec(ctx, removeProjectGroup, arg.ProjectID, arg.GroupID)
 	return err
+}
+
+const upsertLDAPGroup = `-- name: UpsertLDAPGroup :one
+INSERT INTO groups (name, source) VALUES ($1, 'ldap')
+ON CONFLICT (name) DO UPDATE SET name = EXCLUDED.name
+RETURNING id
+`
+
+// Зеркало LDAP-группы; одноимённая локальная группа переиспользуется
+// (source не перетирается).
+func (q *Queries) UpsertLDAPGroup(ctx context.Context, name string) (int64, error) {
+	row := q.db.QueryRow(ctx, upsertLDAPGroup, name)
+	var id int64
+	err := row.Scan(&id)
+	return id, err
 }
 
 const upsertProjectGroup = `-- name: UpsertProjectGroup :exec

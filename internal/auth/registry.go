@@ -77,6 +77,26 @@ func (r *Registry) EnsureRole(ctx context.Context, u *User, want string) error {
 	return nil
 }
 
+// SyncLDAPGroups зеркалирует группы каталога в локальные (source='ldap'):
+// создаёт недостающие, добавляет членство, убирает из зеркал, которых у
+// пользователя больше нет. Локальные группы (source='local') не трогаются.
+func (r *Registry) SyncLDAPGroups(ctx context.Context, userID int64, names []string) error {
+	keep := []int64{}
+	for _, n := range names {
+		id, err := r.q.UpsertLDAPGroup(ctx, n)
+		if err != nil {
+			return err
+		}
+		if err := r.q.AddGroupMember(ctx, store.AddGroupMemberParams{GroupID: id, UserID: userID}); err != nil {
+			return err
+		}
+		keep = append(keep, id)
+	}
+	return r.q.PruneLDAPMemberships(ctx, store.PruneLDAPMembershipsParams{
+		UserID: userID, KeepIds: keep,
+	})
+}
+
 func roleRank(r string) int {
 	switch r {
 	case RoleAdmin:
