@@ -177,6 +177,30 @@
       `publicRead` сохраняется; выход — в футере сайдбара.
 - [ ] Привязка нескольких провайдеров к одному пользователю (по email или
       явная привязка в профиле).
+- [ ] **LDAP-авторизация** (дизайн 2026-07-20) — третий режим рядом с
+      IAM-JWT и OAuth, переиспользует cookie-сессии/Registry/роли:
+  - [ ] search-then-bind: сервисная учётка → поиск по subtree от baseDN
+        (+ несколько userBases) → bind DN пользователя; ldaps/StartTLS,
+        свой CA, таймауты;
+  - [ ] пресеты `ad | freeipa | openldap` (фильтры, логин-атрибут, группы:
+        AD memberOf + вложенные chain-matching 1.2.840.113556.1.4.1941;
+        FreeIPA memberOf; OpenLDAP memberOf-overlay с fallback-поиском
+        по member/uniqueMember/memberUid); всё переопределяемо;
+  - [ ] `bindLogin` вместо полного bindDN: `=` → DN как есть, `@` → UPN (AD),
+        иначе по правилу пресета (AD — @domain из baseDN; FreeIPA —
+        uid=%s,cn=users,cn=accounts; OpenLDAP — serviceDNTemplate);
+        разворот и тестовый bind — в «Проверить авторизацию»;
+  - [ ] роли: `ldap.adminGroups` (список групп админов) → admin,
+        editorGroups → editor, иначе defaultRole;
+  - [ ] **break-glass локальный админ**: `auth.localAdmin`
+        {username, bcrypt-hash} в конфиге/env (не в БД — переживает импорт,
+        недоступен из UI), вход через ту же форму логин/пароль;
+  - [ ] форма логин/пароль на экране входа (совместно с OAuth-кнопками);
+  - [ ] тесты: OpenLDAP-контейнер в docker-compose.test.yml (профиль ldap)
+        с сидированной структурой; пресеты AD/FreeIPA — юнит на фильтры;
+  - [ ] фаза 2: вложенные группы для FreeIPA/OpenLDAP (рекурсия с лимитом),
+        зеркалирование LDAP-групп в локальные (роль проекта — AD-группе).
+      Зависимости: go-ldap/ldap/v3 и x/crypto (bcrypt) — новые в vendor.
 - [x] **Группы пользователей** (0010): локальные группы + состав в админке;
       роль группе в проекте (API и UI в секции «Проекты» → Участники);
       приоритет: личное членство > групповое > видимость.
