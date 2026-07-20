@@ -83,6 +83,20 @@ func TestBackupRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	// Группы: локальная с участником и ролью в проекте (LDAP фаза 2 / §8).
+	grp, err := q.CreateGroup(ctx, "bk-team")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := q.AddGroupMember(ctx, store.AddGroupMemberParams{GroupID: grp.ID, UserID: u.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if err := q.UpsertProjectGroup(ctx, store.UpsertProjectGroupParams{
+		ProjectID: mainP.ID, GroupID: grp.ID, Role: "editor",
+	}); err != nil {
+		t.Fatal(err)
+	}
+
 	dump, err := svc.Export(ctx)
 	if err != nil {
 		t.Fatalf("export: %v", err)
@@ -129,6 +143,12 @@ func TestBackupRoundTrip(t *testing.T) {
 	}
 	if dump2.Revisions[0].AuthorID == nil || *dump2.Revisions[0].AuthorID != u.ID {
 		t.Fatal("автор ревизии потерялся")
+	}
+	if len(dump2.Groups) != len(dump.Groups) || len(dump2.GroupMembers) != len(dump.GroupMembers) ||
+		len(dump2.ProjectGroups) != len(dump.ProjectGroups) || len(dump.ProjectGroups) == 0 {
+		t.Fatalf("группы потерялись: g %d/%d gm %d/%d pg %d/%d",
+			len(dump.Groups), len(dump2.Groups), len(dump.GroupMembers), len(dump2.GroupMembers),
+			len(dump.ProjectGroups), len(dump2.ProjectGroups))
 	}
 
 	// Новая страница после импорта — sequence не должен конфликтовать.

@@ -21,15 +21,18 @@ const DumpVersion = 2
 
 // Dump — полный снимок содержимого БД.
 type Dump struct {
-	Version    int           `json:"version"`
-	ExportedAt time.Time     `json:"exportedAt"`
-	Users      []UserRow     `json:"users,omitempty"`
-	Projects   []ProjectRow  `json:"projects,omitempty"`
-	Members    []MemberRow   `json:"members,omitempty"`
-	Pages      []PageRow     `json:"pages"`
-	Revisions  []RevisionRow `json:"revisions"`
-	Files      []FileRow     `json:"files"`
-	Diagrams   []DiagramRow  `json:"diagrams"`
+	Version       int               `json:"version"`
+	ExportedAt    time.Time         `json:"exportedAt"`
+	Users         []UserRow         `json:"users,omitempty"`
+	Projects      []ProjectRow      `json:"projects,omitempty"`
+	Members       []MemberRow       `json:"members,omitempty"`
+	Groups        []GroupRow        `json:"groups,omitempty"`
+	GroupMembers  []GroupMemberRow  `json:"groupMembers,omitempty"`
+	ProjectGroups []ProjectGroupRow `json:"projectGroups,omitempty"`
+	Pages         []PageRow         `json:"pages"`
+	Revisions     []RevisionRow     `json:"revisions"`
+	Files         []FileRow         `json:"files"`
+	Diagrams      []DiagramRow      `json:"diagrams"`
 }
 
 type UserRow struct {
@@ -56,6 +59,24 @@ type MemberRow struct {
 	UserID    int64     `json:"userId"`
 	Role      string    `json:"role"`
 	AddedAt   time.Time `json:"addedAt"`
+}
+
+type GroupRow struct {
+	ID        int64     `json:"id"`
+	Name      string    `json:"name"`
+	Source    string    `json:"source"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
+type GroupMemberRow struct {
+	GroupID int64 `json:"groupId"`
+	UserID  int64 `json:"userId"`
+}
+
+type ProjectGroupRow struct {
+	ProjectID int64  `json:"projectId"`
+	GroupID   int64  `json:"groupId"`
+	Role      string `json:"role"`
 }
 
 type PageRow struct {
@@ -167,6 +188,43 @@ func (s *Service) Export(ctx context.Context) (*Dump, error) {
 	}
 
 	if err := s.eachRow(ctx,
+		`SELECT id, name, source, created_at FROM groups ORDER BY id`,
+		func(rows pgx.Rows) error {
+			var g GroupRow
+			if err := rows.Scan(&g.ID, &g.Name, &g.Source, &g.CreatedAt); err != nil {
+				return err
+			}
+			d.Groups = append(d.Groups, g)
+			return nil
+		}); err != nil {
+		return nil, fmt.Errorf("export groups: %w", err)
+	}
+	if err := s.eachRow(ctx,
+		`SELECT group_id, user_id FROM group_members ORDER BY group_id, user_id`,
+		func(rows pgx.Rows) error {
+			var m GroupMemberRow
+			if err := rows.Scan(&m.GroupID, &m.UserID); err != nil {
+				return err
+			}
+			d.GroupMembers = append(d.GroupMembers, m)
+			return nil
+		}); err != nil {
+		return nil, fmt.Errorf("export group members: %w", err)
+	}
+	if err := s.eachRow(ctx,
+		`SELECT project_id, group_id, role FROM project_group_members ORDER BY project_id, group_id`,
+		func(rows pgx.Rows) error {
+			var g ProjectGroupRow
+			if err := rows.Scan(&g.ProjectID, &g.GroupID, &g.Role); err != nil {
+				return err
+			}
+			d.ProjectGroups = append(d.ProjectGroups, g)
+			return nil
+		}); err != nil {
+		return nil, fmt.Errorf("export project groups: %w", err)
+	}
+
+	if err := s.eachRow(ctx,
 		`SELECT id, parent_id, title, content, content_text, position, version, icon,
 		        created_at, updated_at, project_id, created_by, updated_by, deleted_at, tags
 		 FROM pages ORDER BY id`,
@@ -267,7 +325,8 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 	defer tx.Rollback(ctx) //nolint:errcheck // no-op после успешного Commit
 
 	if _, err := tx.Exec(ctx,
-		`TRUNCATE pages, page_revisions, files, diagrams, users, projects, project_members
+		`TRUNCATE pages, page_revisions, files, diagrams, users, projects,
+		         project_members, groups, group_members, project_group_members
 		 RESTART IDENTITY CASCADE`); err != nil {
 		return fmt.Errorf("очистка таблиц: %w", err)
 	}
@@ -293,6 +352,36 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 			p.ID, p.Key, p.Name, p.Icon, vis, p.CreatedAt,
 		); err != nil {
 			return fmt.Errorf("вставка проекта %d: %w", p.ID, err)
+		}
+	}
+
+	for _, g := range d.Groups {
+		src := g.Source
+		if src == "" {
+			src = "local"
+		}
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO groups (id, name, source, created_at)
+			 OVERRIDING SYSTEM VALUE VALUES ($1, $2, $3, $4)`,
+			g.ID, g.Name, src, g.CreatedAt,
+		); err != nil {
+			return fmt.Errorf("вставка группы %d: %w", g.ID, err)
+		}
+	}
+	for _, m := range d.GroupMembers {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO group_members (group_id, user_id) VALUES ($1, $2)`,
+			m.GroupID, m.UserID,
+		); err != nil {
+			return fmt.Errorf("вставка члена группы %d/%d: %w", m.GroupID, m.UserID, err)
+		}
+	}
+	for _, g := range d.ProjectGroups {
+		if _, err := tx.Exec(ctx,
+			`INSERT INTO project_group_members (project_id, group_id, role) VALUES ($1, $2, $3)`,
+			g.ProjectID, g.GroupID, g.Role,
+		); err != nil {
+			return fmt.Errorf("вставка группы проекта %d/%d: %w", g.ProjectID, g.GroupID, err)
 		}
 	}
 
@@ -386,7 +475,7 @@ func (s *Service) Import(ctx context.Context, d *Dump) error {
 
 	// Sequence identity-колонок сбит после вставки явных id — выставляем на MAX+1.
 	// setval(..., false) => следующий nextval вернёт именно это значение.
-	for _, tbl := range []string{"pages", "page_revisions", "users", "projects"} {
+	for _, tbl := range []string{"pages", "page_revisions", "users", "projects", "groups"} {
 		if _, err := tx.Exec(ctx, fmt.Sprintf(
 			`SELECT setval(pg_get_serial_sequence('%s', 'id'),
 			                (SELECT COALESCE(MAX(id), 0) + 1 FROM %s), false)`, tbl, tbl)); err != nil {
